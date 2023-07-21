@@ -1,0 +1,8 @@
+name: conda-basic-auth
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - conda-canary/label/dev::conda
+  - keyring
+  - requests
