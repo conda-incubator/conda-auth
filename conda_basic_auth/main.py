@@ -3,17 +3,15 @@ Basic auth implementation for the conda fetch plugin hook
 """
 from __future__ import annotations
 
-from functools import wraps
 from getpass import getpass
-from threading import local
 
 import keyring
 from requests.auth import HTTPBasicAuth
 
 from conda.base.context import context
+from conda.base.constants import AUTH_CHANNEL_SETTINGS_NAME, USERNAME_CHANNEL_SETTINGS_NAME
 from conda.exceptions import CondaError
-from conda.gateways.connection.session import CondaSessionBase
-from conda.plugins import CondaFetch, CondaPreCommand, hookimpl
+from conda.plugins import CondaAuth, CondaPreCommand, hookimpl
 
 _CREDENTIALS_CACHE = {}
 
@@ -55,9 +53,8 @@ def collect_credentials(command: str):
     """
     for settings in context.channel_settings:
         if channel := settings.get("channel"):
-            # TODO: This key needs to be a constant
-            if settings.get("fetch_backend") == PLUGIN_NAME:
-                username = settings.get("fetch_backend_username")
+            if settings.get(AUTH_CHANNEL_SETTINGS_NAME) == PLUGIN_NAME:
+                username = settings.get(USERNAME_CHANNEL_SETTINGS_NAME)
                 set_channel_user_credentials(channel, username)
 
 
@@ -66,52 +63,30 @@ def conda_pre_commands():
     yield CondaPreCommand(
         name=f"{PLUGIN_NAME}_collect_credentials",
         action=collect_credentials,
-        run_for={"search", "install", "update", "notices", "create"},
+        run_for={"search", "install", "update", "notices", "create", "search"},
     )
 
 
-#: We do this because the `Session` object which CondaSessionBase is a subclass of
-#: is not thread safe.
-_SESSION_OBJECT_CACHE = local()
-
-
-def cache_session(session: type[BasicAuthSession]):
+class CondaHTTPBasicAuth(HTTPBasicAuth):
     """
-    Provides a caching mechanism for BasicAuthSession objects
+    Implementation of HTTPBasicAuth that relies on a cache location for
+    retrieving login credentials on object instantiation.
     """
 
-    @wraps(session)
-    def wrapper(channel_name: str) -> BasicAuthSession:
-        if not hasattr(_SESSION_OBJECT_CACHE, "cache"):
-            _SESSION_OBJECT_CACHE.cache = {}
+    def __init__(self, channel_name: str):
+        username, password = _CREDENTIALS_CACHE.get(channel_name, (None, None))
 
-        if _SESSION_OBJECT_CACHE.cache.get(channel_name) is None:
-            _SESSION_OBJECT_CACHE.cache[channel_name] = BasicAuthSession(
-                channel_name=channel_name
+        if username is None and password is None:
+            raise CondaError(
+                f"Unable to find user credentials for requests with channel {channel_name}"
             )
 
-        return _SESSION_OBJECT_CACHE.cache[channel_name]
-
-    return wrapper
-
-
-class BasicAuthSession(CondaSessionBase):
-    def __init__(self, channel_name: str | None = None):
-        super().__init__()
-
-        # If a channel name was provided, we override the auth property
-        if channel_name:
-            credentials = _CREDENTIALS_CACHE.get(channel_name)
-            if credentials is None:
-                raise CondaError(
-                    "Unable to find credentials for http basic authentication requests"
-                )
-            self.auth = HTTPBasicAuth(*credentials)
+        super().__init__(username, password)
 
 
 @hookimpl
-def conda_fetch():
+def conda_auth():
     """
     Register our session class
     """
-    yield CondaFetch(name=PLUGIN_NAME, session_class=BasicAuthSession)
+    yield CondaAuth(name=PLUGIN_NAME, auth_class=CondaHTTPBasicAuth)
