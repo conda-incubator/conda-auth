@@ -11,11 +11,10 @@ from requests.auth import HTTPBasicAuth
 from conda.base.context import context
 from conda.base.constants import AUTH_CHANNEL_SETTINGS_NAME, USERNAME_CHANNEL_SETTINGS_NAME
 from conda.exceptions import CondaError
-from conda.plugins import CondaAuth, CondaPreCommand, hookimpl
+
+from .constants import PLUGIN_NAME
 
 _CREDENTIALS_CACHE = {}
-
-PLUGIN_NAME = "conda-basic-auth"
 
 
 def set_channel_user_credentials(channel_name: str, username: str | None) -> tuple[str, str]:
@@ -58,15 +57,6 @@ def collect_credentials(command: str):
                 set_channel_user_credentials(channel, username)
 
 
-@hookimpl
-def conda_pre_commands():
-    yield CondaPreCommand(
-        name=f"{PLUGIN_NAME}_collect_credentials",
-        action=collect_credentials,
-        run_for={"search", "install", "update", "notices", "create", "search"},
-    )
-
-
 class CondaHTTPBasicAuth(HTTPBasicAuth):
     """
     Implementation of HTTPBasicAuth that relies on a cache location for
@@ -82,11 +72,3 @@ class CondaHTTPBasicAuth(HTTPBasicAuth):
             )
 
         super().__init__(username, password)
-
-
-@hookimpl
-def conda_auth():
-    """
-    Register our session class
-    """
-    yield CondaAuth(name=PLUGIN_NAME, auth_class=CondaHTTPBasicAuth)

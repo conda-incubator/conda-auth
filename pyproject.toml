@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "conda-basic-auth"
+name = "conda-auth"
 version = "0.1.0"
-description = "A conda plugin for better handling of HTTP Basic Authentication requests"
+description = "A conda plugin for handling multiple authentication schemes"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
 classifiers = [
@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.entry-points.conda]
-conda-basic-auth = "conda_basic_auth.main"
+conda-auth = "conda_auth.hooks"
 
 [tool.setuptools]
-packages = ["conda_basic_auth"]
+packages = ["conda_auth"]

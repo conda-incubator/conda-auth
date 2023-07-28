@@ -1,2 +1,3 @@
-# conda-basic-auth
-A conda plugin for better handling of HTTP basic authentication.
+# conda-auth
+
+A conda plugin for handling multiple authentication schemes

@@ -1,4 +1,4 @@
-name: conda-basic-auth tests
+name: conda-auth tests
 
 on:
   push:

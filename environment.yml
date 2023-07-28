@@ -1,4 +1,4 @@
-name: conda-basic-auth
+name: conda-auth
 channels:
   - conda-forge
 dependencies:
