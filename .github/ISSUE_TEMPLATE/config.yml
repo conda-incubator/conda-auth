@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: conda related Issues/Requests
+    url: https://github.com/conda/conda
+    about: Anything related to core functionality from conda
