@@ -47,5 +47,8 @@ def conda_auth_handlers():
     """
     Registers auth handlers
     """
+    BasicAuthHandler.set_cache(basic_auth.cache)
+    OAuth2Handler.set_cache(oauth2.cache)
+
     yield CondaAuthHandler(name=HTTP_BASIC_AUTH_NAME, handler=BasicAuthHandler)
     yield CondaAuthHandler(name=OAUTH2_NAME, handler=OAuth2Handler)

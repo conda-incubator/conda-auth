@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from typing import Any
 
 import conda.base.context
+from conda.plugins.types import ChannelAuthBase
+
+from ..exceptions import CondaAuthError
 
 
 class AuthManager(ABC):
@@ -17,7 +21,7 @@ class AuthManager(ABC):
         ``conda.base.context.context.channel_setts``.
         """
         self._context = context
-        self._cache = cache or {}
+        self.cache = cache or {}
 
     def get_action_func(self) -> Callable[[str], None]:
         """Return a callable to be used as the action function for the pre-command plugin hook"""
@@ -55,3 +59,25 @@ class AuthManager(ABC):
         Implementations should return a ``tuple`` of ``str`` which represent the configuration
         values to use in the ``context.channel_settings`` object.
         """
+
+
+class CacheChannelAuthBase(ChannelAuthBase):
+    """
+    Adds a class instance cache object for storage of authentication information.
+    """
+
+    def __init__(self, channel_name: str):
+        """
+        Makes sure we have initialized the cache object.
+        """
+        super().__init__(channel_name)
+
+        if not hasattr(self, "_cache"):
+            raise CondaAuthError(
+                "Cache not initialized on class; please run `BasicAuthHandler.set_cache`"
+                " before using"
+            )
+
+    @classmethod
+    def set_cache(cls, cache: dict[str, Any]) -> None:
+        cls._cache = cache

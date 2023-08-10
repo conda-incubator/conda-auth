@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import keyring
 from conda.exceptions import CondaError
-from requests.auth import AuthBase  # type: ignore
 
 from ..constants import OAUTH2_NAME
 from ..exceptions import CondaAuthError
-from .base import AuthManager
+from .base import AuthManager, CacheChannelAuthBase
 
 CACHE: dict[str, str] = {}
 """
@@ -35,7 +34,7 @@ class OAuth2Manager(AuthManager):
             )
         username = "token"
 
-        if self._cache.get(channel_name) is not None:
+        if self.cache.get(channel_name) is not None:
             return
 
         keyring_id = f"{OAUTH2_NAME}::{channel_name}"
@@ -48,7 +47,7 @@ class OAuth2Manager(AuthManager):
             # Save to keyring if retrieving password for the first time
             keyring.set_password(keyring_id, username, token)
 
-        self._cache[channel_name] = token
+        self.cache[channel_name] = token
 
     def get_auth_type(self) -> str:
         return OAUTH2_NAME
@@ -57,21 +56,26 @@ class OAuth2Manager(AuthManager):
         return (LOGIN_URL_PARAM_NAME,)
 
 
-class OAuth2Handler(AuthBase):
+class OAuth2Handler(CacheChannelAuthBase):
     """
     Implementation of HTTPBasicAuth that relies on a cache location for
     retrieving login credentials on object instantiation.
     """
 
     def __init__(self, channel_name: str):
-        self.token = CACHE.get(channel_name)
+        if not hasattr(self, "_cache"):
+            raise CondaAuthError(
+                "Cache not initialized on class; please run `OAuth2Hanlder.set_cache` before using"
+            )
+
+        self.token = self._cache.get(channel_name)
 
         if self.token is None:
             raise CondaError(
                 f"Unable to find authorization token for requests with channel {channel_name}"
             )
 
-        super().__init__()
+        super().__init__(channel_name)
 
     def __call__(self, request):
         request.headers["Authorization"] = f"Bearer {self.token}"

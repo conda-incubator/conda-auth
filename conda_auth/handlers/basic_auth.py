@@ -6,12 +6,11 @@ from __future__ import annotations
 from getpass import getpass
 
 import keyring
-from requests.auth import HTTPBasicAuth  # type: ignore
-
+from requests.auth import _basic_auth_str  # type: ignore
 from conda.exceptions import CondaError
 
 from ..constants import HTTP_BASIC_AUTH_NAME
-from .base import AuthManager
+from .base import AuthManager, CacheChannelAuthBase
 
 CACHE: dict[str, tuple[str, str]] = {}
 """
@@ -29,7 +28,7 @@ class BasicAuthManager(AuthManager):
     def set_secrets(self, channel_name: str, **kwargs) -> None:
         username = kwargs.get(USERNAME_PARAM_NAME)
 
-        if self._cache.get(channel_name) is not None:
+        if self.cache.get(channel_name) is not None:
             return
 
         keyring_id = f"{HTTP_BASIC_AUTH_NAME}::{channel_name}"
@@ -45,7 +44,7 @@ class BasicAuthManager(AuthManager):
             # Save to keyring if retrieving password for the first time
             keyring.set_password(keyring_id, username, password)
 
-        self._cache[channel_name] = (username, password)
+        self.cache[channel_name] = (username, password)
 
     def get_auth_type(self) -> str:
         return HTTP_BASIC_AUTH_NAME
@@ -54,18 +53,34 @@ class BasicAuthManager(AuthManager):
         return (USERNAME_PARAM_NAME,)
 
 
-class BasicAuthHandler(HTTPBasicAuth):
+class BasicAuthHandler(CacheChannelAuthBase):
     """
     Implementation of HTTPBasicAuth that relies on a cache location for
     retrieving login credentials on object instantiation.
+
+    Some of this has been copied over from ``requests.auth``.
     """
 
     def __init__(self, channel_name: str):
-        username, password = CACHE.get(channel_name, (None, None))
+        super().__init__(channel_name)
+        self.username, self.password = self._cache.get(channel_name, (None, None))
 
-        if username is None and password is None:
+        if self.username is None and self.password is None:
             raise CondaError(
                 f"Unable to find user credentials for requests with channel {channel_name}"
             )
 
-        super().__init__(username, password)
+    def __eq__(self, other):
+        return all(
+            [
+                self.username == getattr(other, "username", None),
+                self.password == getattr(other, "password", None),
+            ]
+        )
+
+    def __ne__(self, other):
+        return not self == other
+
+    def __call__(self, r):
+        r.headers["Authorization"] = _basic_auth_str(self.username, self.password)
+        return r
