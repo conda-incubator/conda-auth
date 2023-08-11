@@ -25,13 +25,16 @@ set. If not set, we ask for it via the ``input`` function.
 
 
 class BasicAuthManager(AuthManager):
+    def _get_keyring_id(self, channel_name: str):
+        return f"{HTTP_BASIC_AUTH_NAME}::{channel_name}"
+
     def set_secrets(self, channel_name: str, **kwargs) -> None:
         username = kwargs.get(USERNAME_PARAM_NAME)
 
         if self.cache.get(channel_name) is not None:
             return
 
-        keyring_id = f"{HTTP_BASIC_AUTH_NAME}::{channel_name}"
+        keyring_id = self._get_keyring_id(channel_name)
 
         if username is None:
             print(f"Please provide credentials for channel: {channel_name}")
@@ -45,6 +48,11 @@ class BasicAuthManager(AuthManager):
             keyring.set_password(keyring_id, username, password)
 
         self.cache[channel_name] = (username, password)
+
+    def remove_secrets(self, channel_name: str, **kwargs) -> None:
+        keyring_id = self._get_keyring_id(channel_name)
+        username = kwargs.get(USERNAME_PARAM_NAME)
+        keyring.delete_password(keyring_id, username)
 
     def get_auth_type(self) -> str:
         return HTTP_BASIC_AUTH_NAME

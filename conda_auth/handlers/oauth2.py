@@ -23,6 +23,11 @@ to correct login screen.
 
 
 class OAuth2Manager(AuthManager):
+    username = "token"
+
+    def _get_keyring_id(self, channel_name: str) -> str:
+        return f"{OAUTH2_NAME}::{channel_name}"
+
     def set_secrets(self, channel_name: str, **kwargs) -> None:
         login_url = kwargs.get(LOGIN_URL_PARAM_NAME)
         if login_url is None:
@@ -32,22 +37,25 @@ class OAuth2Manager(AuthManager):
                 "channel with the "
                 f"{self.get_auth_type()} auth handler."
             )
-        username = "token"
 
         if self.cache.get(channel_name) is not None:
             return
 
-        keyring_id = f"{OAUTH2_NAME}::{channel_name}"
+        keyring_id = self._get_keyring_id(channel_name)
 
-        token = keyring.get_password(keyring_id, username)
+        token = keyring.get_password(keyring_id, self.username)
 
         if token is None:
             print(f"Follow link to login: {login_url}")
             token = input("Copy and paste login token here: ")
             # Save to keyring if retrieving password for the first time
-            keyring.set_password(keyring_id, username, token)
+            keyring.set_password(keyring_id, self.username, token)
 
         self.cache[channel_name] = token
+
+    def remove_secrets(self, channel_name: str, **kwargs) -> None:
+        keyring_id = self._get_keyring_id(channel_name)
+        keyring.delete_password(keyring_id, self.username)
 
     def get_auth_type(self) -> str:
         return OAUTH2_NAME
