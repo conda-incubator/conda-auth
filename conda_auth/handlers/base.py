@@ -27,7 +27,6 @@ class AuthManager(ABC):
         """Return a callable to be used as the action function for the pre-command plugin hook"""
 
         def action(command: str):
-            print(self._context.channel_settings)
             for settings in self._context.channel_settings:
                 if channel := settings.get("channel"):
                     self.authenticate(channel, settings)
