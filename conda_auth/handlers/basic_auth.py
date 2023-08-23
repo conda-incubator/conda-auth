@@ -6,10 +6,12 @@ from __future__ import annotations
 from getpass import getpass
 
 import keyring
+import keyring.errors
 from requests.auth import _basic_auth_str  # type: ignore
 from conda.exceptions import CondaError
 
 from ..constants import HTTP_BASIC_AUTH_NAME
+from ..exceptions import CondaAuthError
 from .base import AuthManager, CacheChannelAuthBase
 
 CACHE: dict[str, tuple[str, str]] = {}
@@ -52,7 +54,11 @@ class BasicAuthManager(AuthManager):
     def remove_secrets(self, channel_name: str, **kwargs) -> None:
         keyring_id = self._get_keyring_id(channel_name)
         username = kwargs.get(USERNAME_PARAM_NAME)
-        keyring.delete_password(keyring_id, username)
+
+        try:
+            keyring.delete_password(keyring_id, username)
+        except keyring.errors.PasswordDeleteError as exc:
+            raise CondaAuthError(f"Unable to remove password. {exc}")
 
     def get_auth_type(self) -> str:
         return HTTP_BASIC_AUTH_NAME

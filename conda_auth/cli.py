@@ -75,7 +75,7 @@ def login(channel: ChannelData):
 
 def login_wrapper(args):
     """Login to a channel"""
-    login(args=args, prog_name="conda login", standalone_mode=False)
+    login(args=args, prog_name="conda login", standalone_mode=True)
 
 
 @click.command("logout")
@@ -89,4 +89,4 @@ def logout(channel):
 
 def logout_wrapper(args):
     """Logout of a channel"""
-    logout(args=args, prog_name="conda logout", standalone_mode=False)
+    logout(args=args, prog_name="conda logout", standalone_mode=True)

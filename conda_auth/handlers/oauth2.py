@@ -4,6 +4,7 @@ OAuth2 implementation for the conda auth handler plugin hook
 from __future__ import annotations
 
 import keyring
+import keyring.errors
 from conda.exceptions import CondaError
 
 from ..constants import OAUTH2_NAME
@@ -55,7 +56,11 @@ class OAuth2Manager(AuthManager):
 
     def remove_secrets(self, channel_name: str, **kwargs) -> None:
         keyring_id = self._get_keyring_id(channel_name)
-        keyring.delete_password(keyring_id, self.username)
+
+        try:
+            keyring.delete_password(keyring_id, self.username)
+        except keyring.errors.PasswordDeleteError as exc:
+            raise CondaAuthError(f"Unable to remove password. {exc}")
 
     def get_auth_type(self) -> str:
         return OAUTH2_NAME
