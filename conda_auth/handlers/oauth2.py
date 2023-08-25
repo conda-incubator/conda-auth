@@ -6,10 +6,16 @@ from __future__ import annotations
 import keyring
 import keyring.errors
 from conda.exceptions import CondaError
+from conda.models.channel import Channel
 
-from ..constants import OAUTH2_NAME
+from ..constants import OAUTH2_NAME, LOGOUT_ERROR_MESSAGE
 from ..exceptions import CondaAuthError
-from .base import AuthManager, CacheChannelAuthBase
+from .base import (
+    AuthManager,
+    CacheChannelAuthBase,
+    test_authentication_credentials,
+    save_credentials,
+)
 
 CACHE: dict[str, str] = {}
 """
@@ -22,45 +28,46 @@ Setting name that appears in ``context.channel_settings``; used to direct user
 to correct login screen.
 """
 
+USERNAME = "token"
+
 
 class OAuth2Manager(AuthManager):
-    username = "token"
-
-    def _get_keyring_id(self, channel_name: str) -> str:
+    def get_keyring_id(self, channel_name: str) -> str:
         return f"{OAUTH2_NAME}::{channel_name}"
 
-    def set_secrets(self, channel_name: str, **kwargs) -> None:
+    @save_credentials
+    @test_authentication_credentials
+    def set_secrets(self, channel: Channel, **kwargs) -> None:
         login_url = kwargs.get(LOGIN_URL_PARAM_NAME)
+
         if login_url is None:
             raise CondaAuthError(
-                f'`login_url` is not set for channel "{channel_name}"; '
+                f'`login_url` is not set for channel "{channel.canonical_name}"; '
                 "please set this value in `channel_settings` before attempting to use this "
                 "channel with the "
                 f"{self.get_auth_type()} auth handler."
             )
 
-        if self.cache.get(channel_name) is not None:
+        if self.cache.get(channel.canonical_name) is not None:
             return
 
-        keyring_id = self._get_keyring_id(channel_name)
+        keyring_id = self.get_keyring_id(channel.canonical_name)
 
-        token = keyring.get_password(keyring_id, self.username)
+        token = keyring.get_password(keyring_id, USERNAME)
 
         if token is None:
             print(f"Follow link to login: {login_url}")
             token = input("Copy and paste login token here: ")
-            # Save to keyring if retrieving password for the first time
-            keyring.set_password(keyring_id, self.username, token)
 
-        self.cache[channel_name] = token
+        self.cache[channel.canonical_name] = (USERNAME, token)
 
-    def remove_secrets(self, channel_name: str, **kwargs) -> None:
-        keyring_id = self._get_keyring_id(channel_name)
+    def remove_secrets(self, channel_obj: Channel, **kwargs) -> None:
+        keyring_id = self.get_keyring_id(channel_obj.canonical_name)
 
         try:
-            keyring.delete_password(keyring_id, self.username)
+            keyring.delete_password(keyring_id, USERNAME)
         except keyring.errors.PasswordDeleteError as exc:
-            raise CondaAuthError(f"Unable to remove password. {exc}")
+            raise CondaAuthError(f"{LOGOUT_ERROR_MESSAGE} {exc}")
 
     def get_auth_type(self) -> str:
         return OAUTH2_NAME

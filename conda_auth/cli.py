@@ -4,8 +4,14 @@ import click
 from conda.base.context import context
 from conda.models.channel import Channel
 
+from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
 from .exceptions import CondaAuthError
-from .handlers import auth_manager_mapping, AuthManager
+from .handlers import AuthManager, oauth2, basic_auth
+
+AUTH_MANAGER_MAPPING = {
+    OAUTH2_NAME: oauth2,
+    HTTP_BASIC_AUTH_NAME: basic_auth,
+}
 
 
 class ChannelData(NamedTuple):
@@ -31,6 +37,9 @@ def validate_channel(ctx, param, value):
     """
     Makes sure the channel exists in conda's configuration and returns a ``ChannelData`` object
     if so.
+
+    TODO: This function is doing a lot more than a simple "validation"; Should be refactored or
+          renamed.
     """
     context.__init__()
 
@@ -39,10 +48,10 @@ def validate_channel(ctx, param, value):
     for settings in context.channel_settings:
         if channel_name := settings.get("channel"):
             auth_type = settings.get("auth")
-            auth_manager = auth_manager_mapping.get(auth_type)
+            auth_manager = AUTH_MANAGER_MAPPING.get(auth_type)
 
             if auth_manager is None:
-                available_auth_types = ", ".join(auth_manager_mapping.keys())
+                available_auth_types = ", ".join(AUTH_MANAGER_MAPPING.keys())
                 raise CondaAuthError(
                     f'Invalid configured authentication handler for "{channel_name}". '
                     'Please make sure "auth" is defined in "channel_settings". '
@@ -54,7 +63,7 @@ def validate_channel(ctx, param, value):
 
             if provided_channel == channel:
                 return ChannelData(
-                    channel=channel, settings=settings, manager=auth_manager(context)
+                    channel=channel, settings=settings, manager=auth_manager
                 )
 
     raise CondaAuthError(
@@ -70,7 +79,7 @@ def login(channel: ChannelData):
     """
     Login to a channel
     """
-    channel.manager.authenticate(channel.channel.canonical_name, channel.settings)
+    channel.manager.authenticate(channel.channel, channel.settings)
 
 
 def login_wrapper(args):
@@ -84,7 +93,7 @@ def logout(channel):
     """
     Logout of a channel
     """
-    channel.manager.remove_secrets(channel.channel.canonical_name, **channel.settings)
+    channel.manager.remove_secrets(channel.channel, **channel.settings)
 
 
 def logout_wrapper(args):

@@ -1,15 +1,11 @@
 """
 A place to register plugin hooks
 """
-from conda.base.context import context
 from conda.plugins import CondaAuthHandler, CondaPreCommand, CondaSubcommand, hookimpl
 
-from .handlers import OAuth2Manager, OAuth2Handler, BasicAuthManager, BasicAuthHandler
+from .handlers import OAuth2Handler, BasicAuthHandler, oauth2, basic_auth
 from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
 from .cli import login_wrapper, logout_wrapper
-
-oauth2 = OAuth2Manager(context)
-basic_auth = BasicAuthManager(context)
 
 
 @hookimpl
@@ -47,8 +43,5 @@ def conda_auth_handlers():
     """
     Registers auth handlers
     """
-    BasicAuthHandler.set_cache(basic_auth.cache)
-    OAuth2Handler.set_cache(oauth2.cache)
-
     yield CondaAuthHandler(name=HTTP_BASIC_AUTH_NAME, handler=BasicAuthHandler)
     yield CondaAuthHandler(name=OAUTH2_NAME, handler=OAuth2Handler)

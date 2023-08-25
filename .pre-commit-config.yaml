@@ -10,6 +10,7 @@ repos:
     rev: ''  # Use the sha / tag you want to point at
     hooks:
     - id: mypy
+      additional_dependencies: ['types-requests']
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.3.1
     hooks:

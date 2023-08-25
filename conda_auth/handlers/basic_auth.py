@@ -9,10 +9,16 @@ import keyring
 import keyring.errors
 from requests.auth import _basic_auth_str  # type: ignore
 from conda.exceptions import CondaError
+from conda.models.channel import Channel
 
-from ..constants import HTTP_BASIC_AUTH_NAME
+from ..constants import HTTP_BASIC_AUTH_NAME, LOGOUT_ERROR_MESSAGE
 from ..exceptions import CondaAuthError
-from .base import AuthManager, CacheChannelAuthBase
+from .base import (
+    AuthManager,
+    CacheChannelAuthBase,
+    test_authentication_credentials,
+    save_credentials,
+)
 
 CACHE: dict[str, tuple[str, str]] = {}
 """
@@ -27,38 +33,38 @@ set. If not set, we ask for it via the ``input`` function.
 
 
 class BasicAuthManager(AuthManager):
-    def _get_keyring_id(self, channel_name: str):
+    def get_keyring_id(self, channel_name: str):
         return f"{HTTP_BASIC_AUTH_NAME}::{channel_name}"
 
-    def set_secrets(self, channel_name: str, **kwargs) -> None:
+    @save_credentials
+    @test_authentication_credentials
+    def set_secrets(self, channel: Channel, **kwargs) -> None:
         username = kwargs.get(USERNAME_PARAM_NAME)
 
-        if self.cache.get(channel_name) is not None:
+        if self.cache.get(channel.canonical_name) is not None:
             return
 
-        keyring_id = self._get_keyring_id(channel_name)
+        keyring_id = self.get_keyring_id(channel.canonical_name)
 
         if username is None:
-            print(f"Please provide credentials for channel: {channel_name}")
+            print(f"Please provide credentials for channel: {channel.canonical_name}")
             username = input("Username: ")
 
         password = keyring.get_password(keyring_id, username)
 
         if password is None:
             password = getpass()
-            # Save to keyring if retrieving password for the first time
-            keyring.set_password(keyring_id, username, password)
 
-        self.cache[channel_name] = (username, password)
+        self.cache[channel.canonical_name] = (username, password)
 
-    def remove_secrets(self, channel_name: str, **kwargs) -> None:
-        keyring_id = self._get_keyring_id(channel_name)
+    def remove_secrets(self, channel_obj: Channel, **kwargs) -> None:
+        keyring_id = self.get_keyring_id(channel_obj.canonical_name)
         username = kwargs.get(USERNAME_PARAM_NAME)
 
         try:
             keyring.delete_password(keyring_id, username)
         except keyring.errors.PasswordDeleteError as exc:
-            raise CondaAuthError(f"Unable to remove password. {exc}")
+            raise CondaAuthError(f"{LOGOUT_ERROR_MESSAGE} {exc}")
 
     def get_auth_type(self) -> str:
         return HTTP_BASIC_AUTH_NAME
