@@ -4,7 +4,7 @@ OAuth2 implementation for the conda auth handler plugin hook
 from __future__ import annotations
 
 import keyring
-import keyring.errors
+from keyring.errors import PasswordDeleteError
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 
@@ -13,14 +13,9 @@ from ..exceptions import CondaAuthError
 from .base import (
     AuthManager,
     CacheChannelAuthBase,
-    test_authentication_credentials,
+    test_credentials,
     save_credentials,
 )
-
-CACHE: dict[str, str] = {}
-"""
-Used as a cache for storing credentials while the command runs.
-"""
 
 LOGIN_URL_PARAM_NAME = "login_url"
 """
@@ -36,7 +31,7 @@ class OAuth2Manager(AuthManager):
         return f"{OAUTH2_NAME}::{channel_name}"
 
     @save_credentials
-    @test_authentication_credentials
+    @test_credentials
     def set_secrets(self, channel: Channel, **kwargs) -> None:
         login_url = kwargs.get(LOGIN_URL_PARAM_NAME)
 
@@ -61,12 +56,14 @@ class OAuth2Manager(AuthManager):
 
         self.cache[channel.canonical_name] = (USERNAME, token)
 
-    def remove_secrets(self, channel_obj: Channel, **kwargs) -> None:
+    def remove_secrets(
+        self, channel_obj: Channel, settings: dict[str, str | None]
+    ) -> None:
         keyring_id = self.get_keyring_id(channel_obj.canonical_name)
 
         try:
             keyring.delete_password(keyring_id, USERNAME)
-        except keyring.errors.PasswordDeleteError as exc:
+        except PasswordDeleteError as exc:
             raise CondaAuthError(f"{LOGOUT_ERROR_MESSAGE} {exc}")
 
     def get_auth_type(self) -> str:

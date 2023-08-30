@@ -93,7 +93,7 @@ def logout(channel):
     """
     Logout of a channel
     """
-    channel.manager.remove_secrets(channel.channel, **channel.settings)
+    channel.manager.remove_secrets(channel.channel, channel.settings)
 
 
 def logout_wrapper(args):

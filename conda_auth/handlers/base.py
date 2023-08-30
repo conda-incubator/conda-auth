@@ -51,14 +51,18 @@ class AuthManager(ABC):
             extra_params = {
                 param: settings.get(param) for param in self.get_config_parameters()
             }
-            self.set_secrets(channel_obj, **extra_params)
+            self.set_secrets(channel_obj, extra_params)
 
     @abstractmethod
-    def set_secrets(self, channel_obj: Channel, **kwargs) -> None:
+    def set_secrets(
+        self, channel_obj: Channel, settings: dict[str, str | None]
+    ) -> None:
         """Implementations should include routine for fetching and storing secrets"""
 
     @abstractmethod
-    def remove_secrets(self, channel_obj: Channel, **kwargs) -> None:
+    def remove_secrets(
+        self, channel_obj: Channel, settings: dict[str, str | None]
+    ) -> None:
         """Implementations should include routine for removing secrets"""
 
     @abstractmethod
@@ -104,7 +108,7 @@ class CacheChannelAuthBase(ChannelAuthBase):
         cls._cache = cache
 
 
-def test_authentication_credentials(func):
+def test_credentials(func):
     """
     Decorator function used to test whether the collected credentials can successfully make a
     request.
