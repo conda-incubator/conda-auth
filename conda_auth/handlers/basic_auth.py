@@ -33,17 +33,15 @@ class BasicAuthManager(AuthManager):
 
     @save_credentials
     @test_credentials
-    def set_secrets(self, channel_obj: Channel, settings: dict[str, str]) -> None:
-        if self.cache.get(channel_obj.canonical_name) is not None:
+    def set_secrets(self, channel: Channel, settings: dict[str, str]) -> None:
+        if self.cache.get(channel.canonical_name) is not None:
             return
 
         username = settings.get(USERNAME_PARAM_NAME)
-        keyring_id = self.get_keyring_id(channel_obj.canonical_name)
+        keyring_id = self.get_keyring_id(channel.canonical_name)
 
         if username is None:
-            print(
-                f"Please provide credentials for channel: {channel_obj.canonical_name}"
-            )
+            print(f"Please provide credentials for channel: {channel.canonical_name}")
             username = input("Username: ")
 
         password = keyring.get_password(keyring_id, username)
@@ -51,18 +49,14 @@ class BasicAuthManager(AuthManager):
         if password is None:
             password = getpass()
 
-        self.cache[channel_obj.canonical_name] = (username, password)
+        self.cache[channel.canonical_name] = (username, password)
 
-    def remove_secrets(
-        self, channel_obj: Channel, settings: dict[str, str | None]
-    ) -> None:
-        keyring_id = self.get_keyring_id(channel_obj.canonical_name)
+    def remove_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
+        keyring_id = self.get_keyring_id(channel.canonical_name)
         username = settings.get(USERNAME_PARAM_NAME)
 
         if username is None:
-            print(
-                f"Please provide credentials for channel: {channel_obj.canonical_name}"
-            )
+            print(f"Please provide credentials for channel: {channel.canonical_name}")
             username = input("Username: ")
 
         try:

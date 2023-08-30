@@ -173,7 +173,7 @@ def test_basic_auth_manager_remove_existing_secret_no_username(mocker, keyring):
     keyring_mocks.basic.delete_password.assert_called_once()
 
 
-def test_basic_auth_manager_remove_non_existing_secret(mocker, keyring):
+def test_basic_auth_manager_remove_non_existing_secret(keyring):
     """
     Test make sure that when removing a secret that does not exist, the appropriate
     exception and message is raised and shown.

@@ -45,24 +45,20 @@ class AuthManager(ABC):
 
         return action
 
-    def authenticate(self, channel_obj: Channel, settings: dict[str, str]) -> None:
+    def authenticate(self, channel: Channel, settings: dict[str, str]) -> None:
         """Used to retrieve credentials and store them on the ``cache`` property"""
         if settings.get("auth") == self.get_auth_type():
             extra_params = {
                 param: settings.get(param) for param in self.get_config_parameters()
             }
-            self.set_secrets(channel_obj, extra_params)
+            self.set_secrets(channel, extra_params)
 
     @abstractmethod
-    def set_secrets(
-        self, channel_obj: Channel, settings: dict[str, str | None]
-    ) -> None:
+    def set_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
         """Implementations should include routine for fetching and storing secrets"""
 
     @abstractmethod
-    def remove_secrets(
-        self, channel_obj: Channel, settings: dict[str, str | None]
-    ) -> None:
+    def remove_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
         """Implementations should include routine for removing secrets"""
 
     @abstractmethod

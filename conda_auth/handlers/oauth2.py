@@ -32,11 +32,11 @@ class OAuth2Manager(AuthManager):
 
     @save_credentials
     @test_credentials
-    def set_secrets(self, channel: Channel, **kwargs) -> None:
+    def set_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
         if self.cache.get(channel.canonical_name) is not None:
             return
 
-        login_url = kwargs.get(LOGIN_URL_PARAM_NAME)
+        login_url = settings.get(LOGIN_URL_PARAM_NAME)
 
         if login_url is None:
             raise CondaAuthError(
@@ -56,10 +56,8 @@ class OAuth2Manager(AuthManager):
 
         self.cache[channel.canonical_name] = (USERNAME, token)
 
-    def remove_secrets(
-        self, channel_obj: Channel, settings: dict[str, str | None]
-    ) -> None:
-        keyring_id = self.get_keyring_id(channel_obj.canonical_name)
+    def remove_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
+        keyring_id = self.get_keyring_id(channel.canonical_name)
 
         try:
             keyring.delete_password(keyring_id, USERNAME)

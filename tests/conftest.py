@@ -5,7 +5,7 @@ import pytest
 
 
 class KeyringMocks(NamedTuple):
-    oauth: MagicMock
+    oauth2: MagicMock
     basic: MagicMock
     base: MagicMock
 
@@ -17,14 +17,14 @@ def keyring(mocker):
     """
 
     def _keyring(secret):
-        oauth = mocker.patch("conda_auth.handlers.oauth2.keyring")
+        oauth2 = mocker.patch("conda_auth.handlers.oauth2.keyring")
         basic = mocker.patch("conda_auth.handlers.basic_auth.keyring")
         base = mocker.patch("conda_auth.handlers.base.keyring")
 
-        oauth.get_password.return_value = secret
+        oauth2.get_password.return_value = secret
         basic.get_password.return_value = secret
 
-        return KeyringMocks(oauth, basic, base)
+        return KeyringMocks(oauth2, basic, base)
 
     return _keyring
 

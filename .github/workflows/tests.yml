@@ -28,7 +28,6 @@ jobs:
           echo $CONDA/bin >> $GITHUB_PATH
       - name: Install dependencies (conda)
         run: |
-          conda update -n base -c defaults conda
           conda env update --file environment.yml --name base
           conda install --file requirements.dev.txt
       - name: Install conda-basic-auth
