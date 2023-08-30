@@ -33,6 +33,9 @@ class OAuth2Manager(AuthManager):
     @save_credentials
     @test_credentials
     def set_secrets(self, channel: Channel, **kwargs) -> None:
+        if self.cache.get(channel.canonical_name) is not None:
+            return
+
         login_url = kwargs.get(LOGIN_URL_PARAM_NAME)
 
         if login_url is None:
@@ -42,9 +45,6 @@ class OAuth2Manager(AuthManager):
                 "channel with the "
                 f"{self.get_auth_type()} auth handler."
             )
-
-        if self.cache.get(channel.canonical_name) is not None:
-            return
 
         keyring_id = self.get_keyring_id(channel.canonical_name)
 

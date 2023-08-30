@@ -34,11 +34,10 @@ class BasicAuthManager(AuthManager):
     @save_credentials
     @test_credentials
     def set_secrets(self, channel_obj: Channel, settings: dict[str, str]) -> None:
-        username = settings.get(USERNAME_PARAM_NAME)
-
         if self.cache.get(channel_obj.canonical_name) is not None:
             return
 
+        username = settings.get(USERNAME_PARAM_NAME)
         keyring_id = self.get_keyring_id(channel_obj.canonical_name)
 
         if username is None:

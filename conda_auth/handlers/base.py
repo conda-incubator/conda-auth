@@ -27,7 +27,7 @@ class AuthManager(ABC):
     def __init__(self, context: conda.base.context.Context, cache: dict | None = None):
         """
         Optionally set a cache to use and configuration parameters to retrieve from
-        ``conda.base.context.context.channel_setts``.
+        ``conda.base.context.context.channel_settings``.
         """
         self._context = context
         self.cache = {} if cache is None else cache

@@ -32,7 +32,7 @@ def test_basic_auth_manager_no_previous_secret(session, keyring, getpass):
     basic_auth.authenticate(channel, settings)
 
     # make assertions
-    assert cache == {"tester": ("admin", secret)}
+    assert basic_auth.cache == {channel.canonical_name: ("admin", secret)}
     getpass_mock.assert_called_once()
 
 
@@ -61,7 +61,7 @@ def test_basic_auth_manager_no_secret_or_username(mocker, session, keyring, getp
     basic_auth.authenticate(channel, settings)
 
     # make assertions
-    assert cache == {"tester": (username, secret)}
+    assert basic_auth.cache == {channel.canonical_name: (username, secret)}
     getpass_mock.assert_called_once()
 
 
@@ -88,8 +88,37 @@ def test_basic_auth_manager_with_previous_secret(session, keyring, getpass):
     basic_auth.authenticate(channel, settings)
 
     # make assertions
-    assert cache == {"tester": ("admin", secret)}
+    assert basic_auth.cache == {channel.canonical_name: ("admin", secret)}
     getpass_mock.assert_not_called()
+
+
+def test_basic_auth_manager_cache_exists(session, keyring, getpass):
+    """
+    Test to make sure that everything works as expected when a cache entry
+    already exists for a credential set.
+    """
+    secret = "secret"
+    username = "admin"
+    settings = {
+        "auth": "conda-auth-basic-auth",
+        "username": username,
+    }
+    channel = Channel("tester")
+    cache = {channel.canonical_name: (username, secret)}
+
+    # setup mocks
+    getpass_mock = getpass(secret)
+    keyring_mock = keyring(secret)
+    context_mock = MagicMock()
+
+    # run code under test
+    basic_auth = BasicAuthManager(context_mock, cache)
+    basic_auth.authenticate(channel, settings)
+
+    # make assertions
+    assert basic_auth.cache == {channel.canonical_name: (username, secret)}
+    getpass_mock.assert_not_called()
+    keyring_mock.basic.get_password.assert_not_called()
 
 
 def test_basic_auth_manager_remove_existing_secret(keyring):
