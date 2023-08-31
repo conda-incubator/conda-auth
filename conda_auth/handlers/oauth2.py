@@ -5,17 +5,14 @@ from __future__ import annotations
 
 import keyring
 from keyring.errors import PasswordDeleteError
+from conda.base.context import context
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
+from conda.plugins.types import ChannelAuthBase
 
 from ..constants import OAUTH2_NAME, LOGOUT_ERROR_MESSAGE
 from ..exceptions import CondaAuthError
-from .base import (
-    AuthManager,
-    CacheChannelAuthBase,
-    test_credentials,
-    save_credentials,
-)
+from .base import AuthManager
 
 LOGIN_URL_PARAM_NAME = "login_url"
 """
@@ -30,12 +27,13 @@ class OAuth2Manager(AuthManager):
     def get_keyring_id(self, channel_name: str) -> str:
         return f"{OAUTH2_NAME}::{channel_name}"
 
-    @save_credentials
-    @test_credentials
-    def set_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
-        if self.cache.get(channel.canonical_name) is not None:
-            return
-
+    def _fetch_secret(
+        self, channel: Channel, settings: dict[str, str | None]
+    ) -> tuple[str, str]:
+        """
+        Gets the secrets by checking the keyring and then falling back to interrupting
+        the program and asking the user for secret.
+        """
         login_url = settings.get(LOGIN_URL_PARAM_NAME)
 
         if login_url is None:
@@ -54,9 +52,9 @@ class OAuth2Manager(AuthManager):
             print(f"Follow link to login: {login_url}")
             token = input("Copy and paste login token here: ")
 
-        self.cache[channel.canonical_name] = (USERNAME, token)
+        return USERNAME, token
 
-    def remove_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
+    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
         keyring_id = self.get_keyring_id(channel.canonical_name)
 
         try:
@@ -71,19 +69,17 @@ class OAuth2Manager(AuthManager):
         return (LOGIN_URL_PARAM_NAME,)
 
 
-class OAuth2Handler(CacheChannelAuthBase):
+manager = OAuth2Manager(context)
+
+
+class OAuth2Handler(ChannelAuthBase):
     """
     Implementation of HTTPBasicAuth that relies on a cache location for
     retrieving login credentials on object instantiation.
     """
 
     def __init__(self, channel_name: str):
-        if not hasattr(self, "_cache"):
-            raise CondaAuthError(
-                "Cache not initialized on class; please run `OAuth2Hanlder.set_cache` before using"
-            )
-
-        self.token = self._cache.get(channel_name)
+        self.token, _ = manager.get_secret(channel_name)
 
         if self.token is None:
             raise CondaError(

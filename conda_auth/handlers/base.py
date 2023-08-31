@@ -2,21 +2,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from functools import wraps
-from typing import Any
 
 import conda.base.context
 import keyring
 import requests
 from conda.gateways.connection.session import get_session
 from conda.models.channel import Channel
-from conda.plugins.types import ChannelAuthBase
 
-from ..constants import (
-    INVALID_CREDENTIALS_ERROR_MESSAGE,
-    USERNAME_AND_PASSWORD_NOT_SET_ERROR_MESSAGE,
-)
 from ..exceptions import CondaAuthError
+
+INVALID_CREDENTIALS_ERROR_MESSAGE = "Provided credentials are not correct."
 
 
 class AuthManager(ABC):
@@ -30,7 +25,7 @@ class AuthManager(ABC):
         ``conda.base.context.context.channel_settings``.
         """
         self._context = context
-        self.cache = {} if cache is None else cache
+        self._cache = {} if cache is None else cache
 
     def get_action_func(self) -> Callable[[str], None]:
         """Return a callable to be used as the action function for the pre-command plugin hook"""
@@ -40,26 +35,69 @@ class AuthManager(ABC):
                 if channel := settings.get("channel"):
                     channel = Channel(channel)
                     # Only attempt to authenticate for actively used channels
-                    if channel.canonical_name in self._context.channels:
+                    if (
+                        channel.canonical_name in self._context.channels
+                        and settings.get("auth") == self.get_auth_type()
+                    ):
                         self.authenticate(channel, settings)
 
         return action
 
     def authenticate(self, channel: Channel, settings: dict[str, str]) -> None:
         """Used to retrieve credentials and store them on the ``cache`` property"""
-        if settings.get("auth") == self.get_auth_type():
-            extra_params = {
-                param: settings.get(param) for param in self.get_config_parameters()
-            }
-            self.set_secrets(channel, extra_params)
+        extra_params = {
+            param: settings.get(param) for param in self.get_config_parameters()
+        }
+        username, secret = self.fetch_secret(channel, extra_params)
+
+        verify_credentials(channel)
+        self.save_credentials(channel, username, secret)
+
+    def save_credentials(self, channel: Channel, username: str, secret: str) -> None:
+        """
+        Saves the provided credentials to our credential store.
+
+        TODO: Method may be expanded in the future to allow the use of other storage
+              mechanisms.
+        """
+        keyring.set_password(
+            self.get_keyring_id(channel.canonical_name), username, secret
+        )
+
+    def fetch_secret(
+        self, channel: Channel, settings: dict[str, str | None]
+    ) -> tuple[str, str]:
+        """
+        Fetch secrets and handle updating cache.
+        """
+        if secrets := self._cache.get(channel.canonical_name):
+            return secrets
+
+        secrets = self._fetch_secret(channel, settings)
+        self._cache[channel.canonical_name] = secrets
+
+        return secrets
+
+    def get_secret(self, channel_name: str) -> tuple[str | None, str | None]:
+        """
+        Get the secret that is currently cached for the channel
+        """
+        secrets = self._cache.get(channel_name)
+
+        if secrets is None:
+            return None, None
+
+        return secrets
 
     @abstractmethod
-    def set_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
-        """Implementations should include routine for fetching and storing secrets"""
+    def _fetch_secret(
+        self, channel: Channel, settings: dict[str, str | None]
+    ) -> tuple[str, str]:
+        """Implementations should include routine for fetching secret"""
 
     @abstractmethod
-    def remove_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
-        """Implementations should include routine for removing secrets"""
+    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
+        """Implementations should include routine for removing secret"""
 
     @abstractmethod
     def get_auth_type(self) -> str:
@@ -82,77 +120,22 @@ class AuthManager(ABC):
         """
 
 
-class CacheChannelAuthBase(ChannelAuthBase):
+def verify_credentials(channel: Channel) -> None:
     """
-    Adds a class instance cache object for storage of authentication information.
+    Verify the credentials that have been currently set for the channel.
+
+    Raises exception if unable to make a successful request.
     """
+    for url in channel.base_urls:
+        session = get_session(url)
+        resp = session.head(url)
 
-    def __init__(self, channel_name: str):
-        """
-        Makes sure we have initialized the cache object.
-        """
-        super().__init__(channel_name)
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError as exc:
+            if exc.response.status_code == requests.codes["unauthorized"]:
+                error_message = INVALID_CREDENTIALS_ERROR_MESSAGE
+            else:
+                error_message = str(exc)
 
-        if not hasattr(self, "_cache"):
-            raise CondaAuthError(
-                "Cache not initialized on class; please run `BasicAuthHandler.set_cache`"
-                " before using"
-            )
-
-    @classmethod
-    def set_cache(cls, cache: dict[str, Any]) -> None:
-        cls._cache = cache
-
-
-def test_credentials(func):
-    """
-    Decorator function used to test whether the collected credentials can successfully make a
-    request.
-
-    This decorator could be applied to any function which updates the ``AuthManager.cache``
-    property.
-    """
-
-    @wraps(func)
-    def wrapper(self, channel: Channel, *args, **kwargs):
-        func(self, channel, *args, **kwargs)
-
-        for url in channel.base_urls:
-            session = get_session(url)
-            resp = session.head(url)
-
-            try:
-                resp.raise_for_status()
-            except requests.exceptions.HTTPError as exc:
-                if exc.response.status_code == requests.codes["unauthorized"]:
-                    error_message = INVALID_CREDENTIALS_ERROR_MESSAGE
-                else:
-                    error_message = str(exc)
-
-                raise CondaAuthError(error_message)
-
-    return wrapper
-
-
-def save_credentials(func):
-    """
-    Decorator function used to save credentials to the keyring storage system.
-
-    This decorator could be applied to any function which updates the ``AuthManager.cache``
-    property.
-    """
-
-    @wraps(func)
-    def wrapper(self, channel: Channel, *args, **kwargs):
-        func(self, channel, *args, **kwargs)
-
-        username, secret = self.cache.get(channel.canonical_name, (None, None))
-
-        if username is None and secret is None:
-            raise CondaAuthError(USERNAME_AND_PASSWORD_NOT_SET_ERROR_MESSAGE)
-
-        keyring.set_password(
-            self.get_keyring_id(channel.canonical_name), username, secret
-        )
-
-    return wrapper
+            raise CondaAuthError(error_message)

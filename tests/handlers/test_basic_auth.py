@@ -32,7 +32,7 @@ def test_basic_auth_manager_no_previous_secret(session, keyring, getpass):
     basic_auth.authenticate(channel, settings)
 
     # make assertions
-    assert basic_auth.cache == {channel.canonical_name: ("admin", secret)}
+    assert basic_auth._cache == {channel.canonical_name: ("admin", secret)}
     getpass_mock.assert_called_once()
 
 
@@ -61,7 +61,7 @@ def test_basic_auth_manager_no_secret_or_username(mocker, session, keyring, getp
     basic_auth.authenticate(channel, settings)
 
     # make assertions
-    assert basic_auth.cache == {channel.canonical_name: (username, secret)}
+    assert basic_auth._cache == {channel.canonical_name: (username, secret)}
     getpass_mock.assert_called_once()
 
 
@@ -88,7 +88,7 @@ def test_basic_auth_manager_with_previous_secret(session, keyring, getpass):
     basic_auth.authenticate(channel, settings)
 
     # make assertions
-    assert basic_auth.cache == {channel.canonical_name: ("admin", secret)}
+    assert basic_auth._cache == {channel.canonical_name: ("admin", secret)}
     getpass_mock.assert_not_called()
 
 
@@ -116,7 +116,7 @@ def test_basic_auth_manager_cache_exists(session, keyring, getpass):
     basic_auth.authenticate(channel, settings)
 
     # make assertions
-    assert basic_auth.cache == {channel.canonical_name: (username, secret)}
+    assert basic_auth._cache == {channel.canonical_name: (username, secret)}
     getpass_mock.assert_not_called()
     keyring_mock.basic.get_password.assert_not_called()
 
@@ -139,7 +139,7 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
 
     # run code under test
     basic_auth = BasicAuthManager(context, cache)
-    basic_auth.remove_secrets(channel, settings)
+    basic_auth.remove_secret(channel, settings)
 
     # make assertions
     keyring_mocks.basic.delete_password.assert_called_once()
@@ -166,7 +166,7 @@ def test_basic_auth_manager_remove_existing_secret_no_username(mocker, keyring):
 
     # run code under test
     basic_auth = BasicAuthManager(context, cache)
-    basic_auth.remove_secrets(channel, settings)
+    basic_auth.remove_secret(channel, settings)
 
     # make assertions
     input_mock.assert_called_once()
@@ -197,4 +197,4 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
 
     # make assertions
     with pytest.raises(CondaAuthError, match=f"{LOGOUT_ERROR_MESSAGE} {message}"):
-        basic_auth.remove_secrets(channel, settings)
+        basic_auth.remove_secret(channel, settings)

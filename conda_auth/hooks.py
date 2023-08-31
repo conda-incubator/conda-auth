@@ -3,7 +3,9 @@ A place to register plugin hooks
 """
 from conda.plugins import CondaAuthHandler, CondaPreCommand, CondaSubcommand, hookimpl
 
-from .handlers import OAuth2Handler, BasicAuthHandler, oauth2, basic_auth
+from .handlers import OAuth2Handler, BasicAuthHandler
+from .handlers.oauth2 import manager as oauth2_manager
+from .handlers.basic_auth import manager as basic_auth_manager
 from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
 from .cli import login_wrapper, logout_wrapper
 
@@ -28,12 +30,12 @@ def conda_pre_commands():
     """
     yield CondaPreCommand(
         name=f"{HTTP_BASIC_AUTH_NAME}-collect_credentials",
-        action=basic_auth.get_action_func(),
+        action=basic_auth_manager.get_action_func(),
         run_for={"search", "install", "update", "notices", "create", "search"},
     )
     yield CondaPreCommand(
         name=f"{OAUTH2_NAME}-collect_token",
-        action=oauth2.get_action_func(),
+        action=oauth2_manager.get_action_func(),
         run_for={"search", "install", "update", "notices", "create", "search"},
     )
 

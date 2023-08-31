@@ -34,7 +34,7 @@ def test_oauth2_manager_no_previous_secret(mocker, session, keyring):
     oauth.authenticate(channel, settings)
 
     # make assertions
-    assert oauth.cache == {channel.canonical_name: (USERNAME, secret)}
+    assert oauth._cache == {channel.canonical_name: (USERNAME, secret)}
 
 
 def test_oauth2_manager_no_login_url_present(mocker, session, keyring):
@@ -87,7 +87,7 @@ def test_oauth2_manager_with_previous_secret(mocker, session, keyring):
     oauth2.authenticate(channel, settings)
 
     # make assertions
-    assert oauth2.cache == {channel.canonical_name: (USERNAME, secret)}
+    assert oauth2._cache == {channel.canonical_name: (USERNAME, secret)}
     input_mock.assert_not_called()
 
 
@@ -115,7 +115,7 @@ def test_oauth2_manager_cache_exists(session, keyring, getpass):
     oauth2.authenticate(channel, settings)
 
     # make assertions
-    assert oauth2.cache == {channel.canonical_name: (username, secret)}
+    assert oauth2._cache == {channel.canonical_name: (username, secret)}
     getpass_mock.assert_not_called()
     keyring_mock.basic.get_password.assert_not_called()
 
@@ -138,7 +138,7 @@ def test_oauth2_manager_remove_existing_secret(keyring):
 
     # run code under test
     oauth2 = OAuth2Manager(context, cache)
-    oauth2.remove_secrets(channel, settings)
+    oauth2.remove_secret(channel, settings)
 
     # make assertions
     keyring_mocks.oauth2.delete_password.assert_called_once()
@@ -168,4 +168,4 @@ def test_oauth2_manager_remove_non_existing_secret(keyring):
 
     # make assertions
     with pytest.raises(CondaAuthError, match=f"{LOGOUT_ERROR_MESSAGE} {message}"):
-        oauth2.remove_secrets(channel, settings)
+        oauth2.remove_secret(channel, settings)

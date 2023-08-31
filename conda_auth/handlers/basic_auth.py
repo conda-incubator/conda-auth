@@ -8,17 +8,14 @@ from getpass import getpass
 import keyring
 from keyring.errors import PasswordDeleteError
 from requests.auth import _basic_auth_str  # type: ignore
+from conda.base.context import context
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
+from conda.plugins.types import ChannelAuthBase
 
 from ..constants import HTTP_BASIC_AUTH_NAME, LOGOUT_ERROR_MESSAGE
 from ..exceptions import CondaAuthError
-from .base import (
-    AuthManager,
-    CacheChannelAuthBase,
-    test_credentials,
-    save_credentials,
-)
+from .base import AuthManager
 
 USERNAME_PARAM_NAME = "username"
 """
@@ -31,12 +28,13 @@ class BasicAuthManager(AuthManager):
     def get_keyring_id(self, channel_name: str):
         return f"{HTTP_BASIC_AUTH_NAME}::{channel_name}"
 
-    @save_credentials
-    @test_credentials
-    def set_secrets(self, channel: Channel, settings: dict[str, str]) -> None:
-        if self.cache.get(channel.canonical_name) is not None:
-            return
-
+    def _fetch_secret(
+        self, channel: Channel, settings: dict[str, str | None]
+    ) -> tuple[str, str]:
+        """
+        Gets the secrets by checking the keyring and then falling back to interrupting
+        the program and asking the user for the credentials.
+        """
         username = settings.get(USERNAME_PARAM_NAME)
         keyring_id = self.get_keyring_id(channel.canonical_name)
 
@@ -49,9 +47,9 @@ class BasicAuthManager(AuthManager):
         if password is None:
             password = getpass()
 
-        self.cache[channel.canonical_name] = (username, password)
+        return username, password
 
-    def remove_secrets(self, channel: Channel, settings: dict[str, str | None]) -> None:
+    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
         keyring_id = self.get_keyring_id(channel.canonical_name)
         username = settings.get(USERNAME_PARAM_NAME)
 
@@ -71,7 +69,10 @@ class BasicAuthManager(AuthManager):
         return (USERNAME_PARAM_NAME,)
 
 
-class BasicAuthHandler(CacheChannelAuthBase):
+manager = BasicAuthManager(context)
+
+
+class BasicAuthHandler(ChannelAuthBase):
     """
     Implementation of HTTPBasicAuth that relies on a cache location for
     retrieving login credentials on object instantiation.
@@ -81,7 +82,7 @@ class BasicAuthHandler(CacheChannelAuthBase):
 
     def __init__(self, channel_name: str):
         super().__init__(channel_name)
-        self.username, self.password = self._cache.get(channel_name, (None, None))
+        self.username, self.password = manager.get_secret(channel_name)
 
         if self.username is None and self.password is None:
             raise CondaError(
