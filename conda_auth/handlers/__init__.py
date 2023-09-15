@@ -1,3 +1,12 @@
-from .base import AuthManager  # noqa: F401
-from .oauth2 import OAuth2Manager, OAuth2Handler  # noqa: F401
-from .basic_auth import BasicAuthManager, BasicAuthHandler  # noqa: F401
+# flake8: noqa: F401
+from .base import AuthManager
+from .oauth2 import (
+    OAuth2Manager,
+    OAuth2Handler,
+    manager as oauth2_manager,
+)
+from .basic_auth import (
+    BasicAuthManager,
+    BasicAuthHandler,
+    manager as basic_auth_manager,
+)

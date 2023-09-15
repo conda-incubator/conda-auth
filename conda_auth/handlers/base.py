@@ -128,7 +128,7 @@ def verify_credentials(channel: Channel) -> None:
     """
     for url in channel.base_urls:
         session = get_session(url)
-        resp = session.head(url)
+        resp = session.head(url, allow_redirects=False)
 
         try:
             resp.raise_for_status()

@@ -79,7 +79,7 @@ class OAuth2Handler(ChannelAuthBase):
     """
 
     def __init__(self, channel_name: str):
-        self.token, _ = manager.get_secret(channel_name)
+        _, self.token = manager.get_secret(channel_name)
 
         if self.token is None:
             raise CondaError(
