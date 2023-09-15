@@ -6,11 +6,11 @@ from conda.models.channel import Channel
 
 from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
 from .exceptions import CondaAuthError
-from .handlers import AuthManager, oauth2, basic_auth
+from .handlers import AuthManager, oauth2_manager, basic_auth_manager
 
 AUTH_MANAGER_MAPPING = {
-    OAUTH2_NAME: oauth2,
-    HTTP_BASIC_AUTH_NAME: basic_auth,
+    OAUTH2_NAME: oauth2_manager,
+    HTTP_BASIC_AUTH_NAME: basic_auth_manager,
 }
 
 
@@ -25,7 +25,6 @@ class ChannelData(NamedTuple):
 def get_example(channel):
     """Function used to print a nice example for our users 😀"""
     return (
-        "Example:\n\n"
         "channel_settings:\n"
         f"  - channel: {channel}\n"
         "    auth: conda-auth-basic-auth\n"
@@ -93,7 +92,7 @@ def logout(channel):
     """
     Logout of a channel
     """
-    channel.manager.remove_secrets(channel.channel, channel.settings)
+    channel.manager.remove_secret(channel.channel, channel.settings)
 
 
 def logout_wrapper(args):
