@@ -39,13 +39,12 @@ class BasicAuthManager(AuthManager):
         keyring_id = self.get_keyring_id(channel.canonical_name)
 
         if username is None:
-            print(f"Please provide credentials for channel: {channel.canonical_name}")
-            username = input("Username: ")
+            username = self.prompt_username(channel)
 
         password = keyring.get_password(keyring_id, username)
 
         if password is None:
-            password = getpass()
+            password = self.prompt_password()
 
         return username, password
 
@@ -54,8 +53,7 @@ class BasicAuthManager(AuthManager):
         username = settings.get(USERNAME_PARAM_NAME)
 
         if username is None:
-            print(f"Please provide credentials for channel: {channel.canonical_name}")
-            username = input("Username: ")
+            username = self.prompt_username(channel)
 
         try:
             keyring.delete_password(keyring_id, username)
@@ -67,6 +65,19 @@ class BasicAuthManager(AuthManager):
 
     def get_config_parameters(self) -> tuple[str, ...]:
         return (USERNAME_PARAM_NAME,)
+
+    def prompt_password(self) -> str:
+        """
+        This can be overriden for classes that do not want to use the ``getpass`` module.
+        """
+        return getpass()
+
+    def prompt_username(self, channel: Channel) -> str:
+        """
+        This can be overriden for classes that do not want to use the built-in function ``input``.
+        """
+        print(f"Please provide credentials for channel: {channel.canonical_name}")
+        return input("Username: ")
 
 
 manager = BasicAuthManager(context)

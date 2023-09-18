@@ -49,8 +49,7 @@ class OAuth2Manager(AuthManager):
         token = keyring.get_password(keyring_id, USERNAME)
 
         if token is None:
-            print(f"Follow link to login: {login_url}")
-            token = input("Copy and paste login token here: ")
+            token = self.prompt_token(login_url)
 
         return USERNAME, token
 
@@ -67,6 +66,13 @@ class OAuth2Manager(AuthManager):
 
     def get_config_parameters(self) -> tuple[str, ...]:
         return (LOGIN_URL_PARAM_NAME,)
+
+    def prompt_token(self, login_url: str) -> str:
+        """
+        This can be overriden for classes that do not want to use the built-in function ``input``.
+        """
+        print(f"Follow link to login: {login_url}")
+        return input("Copy and paste login token here: ")
 
 
 manager = OAuth2Manager(context)
