@@ -35,25 +35,14 @@ class BasicAuthManager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for the credentials.
         """
-        username = settings.get(USERNAME_PARAM_NAME)
-        keyring_id = self.get_keyring_id(channel.canonical_name)
-
-        if username is None:
-            username = self.prompt_username(channel)
-
-        password = keyring.get_password(keyring_id, username)
-
-        if password is None:
-            password = self.prompt_password()
+        username = self.get_username(settings, channel)
+        password = self.get_password(username, channel)
 
         return username, password
 
     def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
         keyring_id = self.get_keyring_id(channel.canonical_name)
-        username = settings.get(USERNAME_PARAM_NAME)
-
-        if username is None:
-            username = self.prompt_username(channel)
+        username = self.get_username(settings, channel)
 
         try:
             keyring.delete_password(keyring_id, username)
@@ -78,6 +67,29 @@ class BasicAuthManager(AuthManager):
         """
         print(f"Please provide credentials for channel: {channel.canonical_name}")
         return input("Username: ")
+
+    def get_username(self, settings: dict[str, str | None], channel: Channel):
+        """
+        Attempts to find username in settings and falls back to prompting user for it if not found.
+        """
+        username = settings.get(USERNAME_PARAM_NAME)
+
+        if username is None:
+            username = self.prompt_username(channel)
+
+        return username
+
+    def get_password(self, username, channel: Channel) -> str:
+        """
+        Attempts to get password and falls back to prompting the user for it if not found.
+        """
+        keyring_id = self.get_keyring_id(channel.canonical_name)
+        password = keyring.get_password(keyring_id, username)
+
+        if password is None:
+            password = self.prompt_password()
+
+        return password
 
 
 manager = BasicAuthManager(context)
