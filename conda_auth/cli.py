@@ -72,7 +72,19 @@ def validate_channel(ctx, param, value):
     )
 
 
-@click.command("login")
+@click.group("auth")
+def group():
+    """
+    Commands for handling authentication within conda
+    """
+
+
+def auth_wrapper(args):
+    """Authentication commands for conda"""
+    group(args=args, prog_name="conda auth", standalone_mode=True)
+
+
+@group.command("login")
 @click.argument("channel", callback=validate_channel)
 def login(channel: ChannelData):
     """
@@ -81,20 +93,10 @@ def login(channel: ChannelData):
     channel.manager.authenticate(channel.channel, channel.settings)
 
 
-def login_wrapper(args):
-    """Login to a channel"""
-    login(args=args, prog_name="conda login", standalone_mode=True)
-
-
-@click.command("logout")
+@group.command("logout")
 @click.argument("channel", callback=validate_channel)
 def logout(channel):
     """
     Logout of a channel
     """
     channel.manager.remove_secret(channel.channel, channel.settings)
-
-
-def logout_wrapper(args):
-    """Logout of a channel"""
-    logout(args=args, prog_name="conda logout", standalone_mode=True)

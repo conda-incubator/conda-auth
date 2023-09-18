@@ -10,4 +10,4 @@ supported:
 - OAuth2
 
 On top of this, conda-auth supports session management via two subcommands
-for logging into services (`conda login`) and logging out of services (`conda logout`).
+for logging into services (`conda auth login`) and logging out of services (`conda auth logout`).

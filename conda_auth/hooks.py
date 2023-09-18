@@ -7,7 +7,7 @@ from .handlers import OAuth2Handler, BasicAuthHandler
 from .handlers.oauth2 import manager as oauth2_manager
 from .handlers.basic_auth import manager as basic_auth_manager
 from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
-from .cli import login_wrapper, logout_wrapper
+from .cli import auth_wrapper
 
 
 @hookimpl
@@ -16,10 +16,7 @@ def conda_subcommands():
     Registers subcommands
     """
     yield CondaSubcommand(
-        name="login", action=login_wrapper, summary="Login to a channel"
-    )
-    yield CondaSubcommand(
-        name="logout", action=logout_wrapper, summary="Logout of a channel"
+        name="auth", action=auth_wrapper, summary="Authentication commands for conda"
     )
 
 
