@@ -23,6 +23,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy"
 ]
 dependencies = [
+  "click",
   "conda",
   "keyring",
   "requests",
