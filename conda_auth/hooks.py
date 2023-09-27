@@ -27,12 +27,12 @@ def conda_pre_commands():
     """
     yield CondaPreCommand(
         name=f"{HTTP_BASIC_AUTH_NAME}-collect_credentials",
-        action=basic_auth_manager.get_action_func(),
+        action=basic_auth_manager.hook_action,
         run_for={"search", "install", "update", "notices", "create", "search"},
     )
     yield CondaPreCommand(
         name=f"{OAUTH2_NAME}-collect_token",
-        action=oauth2_manager.get_action_func(),
+        action=oauth2_manager.hook_action,
         run_for={"search", "install", "update", "notices", "create", "search"},
     )
 

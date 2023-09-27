@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 
 import conda.base.context
 import keyring
@@ -27,21 +26,18 @@ class AuthManager(ABC):
         self._context = context
         self._cache = {} if cache is None else cache
 
-    def get_action_func(self) -> Callable[[str], None]:
-        """Return a callable to be used as the action function for the pre-command plugin hook"""
+    def hook_action(self, command: str) -> None:
+        """Action callable to be used in the conda pre-command plugin hook"""
 
-        def action(command: str):
-            for settings in self._context.channel_settings:
-                if channel := settings.get("channel"):
-                    channel = Channel(channel)
-                    # Only attempt to authenticate for actively used channels
-                    if (
-                        channel.canonical_name in self._context.channels
-                        and settings.get("auth") == self.get_auth_type()
-                    ):
-                        self.authenticate(channel, settings)
-
-        return action
+        for settings in self._context.channel_settings:
+            if channel := settings.get("channel"):
+                channel = Channel(channel)
+                # Only attempt to authenticate for actively used channels
+                if (
+                    channel.canonical_name in self._context.channels
+                    and settings.get("auth") == self.get_auth_type()
+                ):
+                    self.authenticate(channel, settings)
 
     def authenticate(self, channel: Channel, settings: dict[str, str]) -> None:
         """Used to retrieve credentials and store them on the ``cache`` property"""

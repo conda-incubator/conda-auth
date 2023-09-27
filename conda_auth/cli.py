@@ -40,8 +40,6 @@ def validate_channel(ctx, param, value):
     TODO: This function is doing a lot more than a simple "validation"; Should be refactored or
           renamed.
     """
-    context.__init__()
-
     provided_channel = Channel(value)
 
     for settings in context.channel_settings:
