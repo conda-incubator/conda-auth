@@ -7,7 +7,6 @@ login session management. Currently, the following authentication schemes are
 supported:
 
 - HTTP Basic Authentication
-- OAuth2
 
 On top of this, conda-auth supports session management via two subcommands
 for logging into services (`conda auth login`) and logging out of services (`conda auth logout`).
