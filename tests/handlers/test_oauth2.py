@@ -7,7 +7,7 @@ from conda.models.channel import Channel
 from conda_auth.handlers import OAuth2Manager
 from conda_auth.handlers.oauth2 import USERNAME
 from conda_auth.exceptions import CondaAuthError
-from conda_auth.constants import LOGOUT_ERROR_MESSAGE
+from conda_auth.constants import LOGOUT_ERROR_MESSAGE, OAUTH2_NAME
 
 
 def test_oauth2_manager_no_previous_secret(mocker, session, keyring):
@@ -17,7 +17,7 @@ def test_oauth2_manager_no_previous_secret(mocker, session, keyring):
     """
     secret = "secret"
     settings = {
-        "auth": "conda-auth-oauth2",
+        "auth": OAUTH2_NAME,
         "login_url": "http://localhost",
     }
     cache = {}
@@ -44,7 +44,7 @@ def test_oauth2_manager_no_login_url_present(mocker, session, keyring):
     """
     secret = "secret"
     settings = {
-        "auth": "conda-auth-oauth2",
+        "auth": OAUTH2_NAME,
     }
     cache = {}
     channel = Channel("tester")
@@ -71,7 +71,7 @@ def test_oauth2_manager_with_previous_secret(mocker, session, keyring):
     """
     secret = "secret"
     settings = {
-        "auth": "conda-auth-oauth2",
+        "auth": OAUTH2_NAME,
         "login_url": "http://localhost",
     }
     channel = Channel("tester")
@@ -99,7 +99,7 @@ def test_oauth2_manager_cache_exists(session, keyring, getpass):
     secret = "secret"
     username = "admin"
     settings = {
-        "auth": "conda-auth-oauth2",
+        "auth": OAUTH2_NAME,
         "login_url": "http://localhost",
     }
     channel = Channel("tester")
@@ -126,7 +126,7 @@ def test_oauth2_manager_remove_existing_secret(keyring):
     """
     secret = "secret"
     settings = {
-        "auth": "conda-auth-oauth2",
+        "auth": OAUTH2_NAME,
         "login_url": "http://localhost",
     }
     cache = {}
@@ -151,7 +151,7 @@ def test_oauth2_manager_remove_non_existing_secret(keyring):
     """
     secret = "secret"
     settings = {
-        "auth": "conda-auth-oauth2",
+        "auth": OAUTH2_NAME,
         "login_url": "http://localhost",
     }
     cache = {}

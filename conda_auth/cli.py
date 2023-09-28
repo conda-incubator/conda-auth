@@ -1,9 +1,10 @@
-from typing import NamedTuple
+from __future__ import annotations
 
 import click
 from conda.base.context import context
 from conda.models.channel import Channel
 
+from .condarc import CondaRC, CondaRCError
 from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
 from .exceptions import CondaAuthError
 from .handlers import AuthManager, oauth2_manager, basic_auth_manager
@@ -14,60 +15,46 @@ AUTH_MANAGER_MAPPING = {
 }
 
 
-class ChannelData(NamedTuple):
-    """Used for providing commands with all the channel information they need"""
-
-    channel: Channel
-    settings: dict[str, str]
-    manager: AuthManager
-
-
-def get_example(channel):
-    """Function used to print a nice example for our users 😀"""
-    return (
-        "channel_settings:\n"
-        f"  - channel: {channel}\n"
-        "    auth: conda-auth-basic-auth\n"
-        "    username: user_one"
-    )
-
-
-def validate_channel(ctx, param, value):
+def parse_channel(ctx, param, value):
     """
-    Makes sure the channel exists in conda's configuration and returns a ``ChannelData`` object
-    if so.
-
-    TODO: This function is doing a lot more than a simple "validation"; Should be refactored or
-          renamed.
+    Converts the channel name into a Channel object
     """
-    provided_channel = Channel(value)
+    return Channel(value)
 
+
+def get_auth_manager(options) -> tuple[str, AuthManager]:
+    """
+    Based on CLI options provided, return the correct auth manager to use
+    """
+    auth_type = options.get("type") or options.get("auth")
+
+    if auth_type is not None:
+        auth_manager = AUTH_MANAGER_MAPPING.get(auth_type)
+        if auth_manager is None:
+            raise CondaAuthError(
+                f'Invalid authentication type. Valid types are: "{HTTP_BASIC_AUTH_NAME}"'
+            )
+
+    # we use http basic auth when username or password are present
+    elif options.get("username") is not None or options.get("password") is not None:
+        auth_manager = basic_auth_manager
+        auth_type = HTTP_BASIC_AUTH_NAME
+
+    # default authentication handler
+    else:
+        auth_manager = basic_auth_manager
+        auth_type = HTTP_BASIC_AUTH_NAME
+
+    return auth_type, auth_manager
+
+
+def get_channel_settings(channel: str) -> dict[str, str] | None:
+    """
+    Retrieve the channel settings from the context object
+    """
     for settings in context.channel_settings:
-        if channel_name := settings.get("channel"):
-            auth_type = settings.get("auth")
-            auth_manager = AUTH_MANAGER_MAPPING.get(auth_type)
-
-            if auth_manager is None:
-                available_auth_types = ", ".join(AUTH_MANAGER_MAPPING.keys())
-                raise CondaAuthError(
-                    f'Invalid configured authentication handler for "{channel_name}". '
-                    'Please make sure "auth" is defined in "channel_settings". '
-                    f"Possible choices: {available_auth_types}\n\n"
-                    f"{get_example(channel_name)}"
-                )
-
-            channel = Channel(channel_name)
-
-            if provided_channel == channel:
-                return ChannelData(
-                    channel=channel, settings=settings, manager=auth_manager
-                )
-
-    raise CondaAuthError(
-        f"Unrecognized channel: {value}. Make sure this channel is defined in your "
-        'conda configuration and has an entry in "channel_settings".\n\n'
-        f"{get_example(value)}"
-    )
+        if settings.get("channel") == channel:
+            return dict(**settings)
 
 
 @click.group("auth")
@@ -83,18 +70,41 @@ def auth_wrapper(args):
 
 
 @group.command("login")
-@click.argument("channel", callback=validate_channel)
-def login(channel: ChannelData):
+@click.option("-u", "--username")
+@click.option("-p", "--password")
+@click.option("-t", "--type")
+@click.argument("channel", callback=parse_channel)
+def login(channel: Channel, **kwargs):
     """
     Login to a channel
     """
-    channel.manager.authenticate(channel.channel, channel.settings)
+    kwargs = {key: val for key, val in kwargs.items() if val is not None}
+    settings = get_channel_settings(channel.canonical_name) or {}
+    settings.update(kwargs)
+
+    auth_type, auth_manager = get_auth_manager(settings)
+    username = auth_manager.authenticate(channel, settings)
+
+    try:
+        condarc = CondaRC()
+        condarc.update_channel_settings(channel.canonical_name, username, auth_type)
+        condarc.save()
+    except CondaRCError as exc:
+        raise CondaAuthError(exc)
 
 
 @group.command("logout")
-@click.argument("channel", callback=validate_channel)
-def logout(channel):
+@click.option("-u", "--username")
+@click.argument("channel", callback=parse_channel)
+def logout(channel: Channel, **kwargs):
     """
     Logout of a channel
     """
-    channel.manager.remove_secret(channel.channel, channel.settings)
+    settings = get_channel_settings(channel.canonical_name)
+
+    if settings is None:
+        raise CondaAuthError("Unable to find information about logged in session.")
+
+    settings["type"] = settings["auth"]
+    auth_type, auth_manager = get_auth_manager(settings)
+    auth_manager.remove_secret(channel, kwargs)

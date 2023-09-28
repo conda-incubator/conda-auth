@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 from typing import NamedTuple
 
 import pytest
+from click.testing import CliRunner
 
 
 class KeyringMocks(NamedTuple):
@@ -34,7 +35,7 @@ def session(mocker):
     """
     Used to mock the get_session function from conda to mock network requests
     """
-    session_mock = mocker.patch("conda_auth.handlers.base.get_session")
+    session_mock = mocker.patch("conda_auth.handlers.base.CondaSession")
 
     return session_mock
 
@@ -51,3 +52,21 @@ def getpass(mocker):
         return getpass_mock
 
     return _getpass
+
+
+@pytest.fixture
+def runner():
+    """
+    CLI test runner used for all tests
+    """
+    yield CliRunner()
+
+
+@pytest.fixture
+def condarc(mocker):
+    """
+    Mocks the CondaRC object
+    """
+    condarc_mock = mocker.patch("conda_auth.cli.CondaRC")
+
+    return condarc_mock

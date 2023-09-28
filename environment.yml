@@ -6,3 +6,4 @@ dependencies:
   - conda-canary/label/dev::conda
   - keyring
   - requests
+  - ruamel.yaml

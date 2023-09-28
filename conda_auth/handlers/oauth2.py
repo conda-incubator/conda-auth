@@ -10,7 +10,7 @@ from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import OAUTH2_NAME, LOGOUT_ERROR_MESSAGE
+from ..constants import OAUTH2_NAME, LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
 from ..exceptions import CondaAuthError
 from .base import AuthManager
 
@@ -25,7 +25,7 @@ USERNAME = "token"
 
 class OAuth2Manager(AuthManager):
     def get_keyring_id(self, channel_name: str) -> str:
-        return f"{OAUTH2_NAME}::{channel_name}"
+        return f"{PLUGIN_NAME}::{OAUTH2_NAME}::{channel_name}"
 
     def _fetch_secret(
         self, channel: Channel, settings: dict[str, str | None]
@@ -74,6 +74,9 @@ class OAuth2Manager(AuthManager):
         print(f"Follow link to login: {login_url}")
         return input("Copy and paste login token here: ")
 
+    def get_auth_class(self) -> type:
+        return OAuth2Handler
+
 
 manager = OAuth2Manager(context)
 
@@ -86,6 +89,7 @@ class OAuth2Handler(ChannelAuthBase):
 
     def __init__(self, channel_name: str):
         _, self.token = manager.get_secret(channel_name)
+        breakpoint()
 
         if self.token is None:
             raise CondaError(

@@ -13,20 +13,18 @@ from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import HTTP_BASIC_AUTH_NAME, LOGOUT_ERROR_MESSAGE
+from ..constants import HTTP_BASIC_AUTH_NAME, LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
 from ..exceptions import CondaAuthError
 from .base import AuthManager
 
 USERNAME_PARAM_NAME = "username"
-"""
-Setting name that appears in ``context.channel_settings``; This value is optionally
-set. If not set, we ask for it via the ``input`` function.
-"""
+
+PASSWORD_PARAM_NAME = "password"
 
 
 class BasicAuthManager(AuthManager):
     def get_keyring_id(self, channel_name: str):
-        return f"{HTTP_BASIC_AUTH_NAME}::{channel_name}"
+        return f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel_name}"
 
     def _fetch_secret(
         self, channel: Channel, settings: dict[str, str | None]
@@ -36,7 +34,7 @@ class BasicAuthManager(AuthManager):
         the program and asking the user for the credentials.
         """
         username = self.get_username(settings, channel)
-        password = self.get_password(username, channel)
+        password = self.get_password(username, settings, channel)
 
         return username, password
 
@@ -53,7 +51,7 @@ class BasicAuthManager(AuthManager):
         return HTTP_BASIC_AUTH_NAME
 
     def get_config_parameters(self) -> tuple[str, ...]:
-        return (USERNAME_PARAM_NAME,)
+        return USERNAME_PARAM_NAME, PASSWORD_PARAM_NAME
 
     def prompt_password(self) -> str:
         """
@@ -79,7 +77,9 @@ class BasicAuthManager(AuthManager):
 
         return username
 
-    def get_password(self, username, channel: Channel) -> str:
+    def get_password(
+        self, username: str, settings: dict[str, str | None], channel: Channel
+    ) -> str:
         """
         Attempts to get password and falls back to prompting the user for it if not found.
         """
@@ -87,9 +87,14 @@ class BasicAuthManager(AuthManager):
         password = keyring.get_password(keyring_id, username)
 
         if password is None:
-            password = self.prompt_password()
+            password = settings.get(PASSWORD_PARAM_NAME)
+            if password is None:
+                password = self.prompt_password()
 
         return password
+
+    def get_auth_class(self) -> type:
+        return BasicAuthHandler
 
 
 manager = BasicAuthManager(context)
