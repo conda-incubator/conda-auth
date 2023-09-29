@@ -13,12 +13,12 @@ class CondaRCError(Exception):
 
 
 class CondaRC:
-    def __init__(self):
+    def __init__(self, condarc_path: Path | None = None):
         """
         Initializes the CondaRC object by attempting to open and load the contents
         of the condarc file found in the user's home directory.
         """
-        self.condarc_path = Path(os.path.expanduser("~/.condarc"))
+        self.condarc_path = condarc_path or Path(os.path.expanduser("~/.condarc"))
 
         try:
             self.condarc_path.touch()
@@ -28,7 +28,7 @@ class CondaRC:
             raise CondaRCError(f"Could not open condarc file: {exc}")
 
         try:
-            self.loaded_yaml = yaml.load(contents)
+            self.loaded_yaml = yaml.load(contents) or {}
         except YAMLError as exc:
             raise CondaRCError(f"Could not parse condarc: {exc}")
 
