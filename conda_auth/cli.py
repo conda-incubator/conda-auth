@@ -100,19 +100,15 @@ def login(channel: Channel, **kwargs):
 
 
 @group.command("logout")
-@click.option("-u", "--username")
 @click.argument("channel", callback=parse_channel)
-def logout(channel: Channel, **kwargs):
+def logout(channel: Channel):
     """
     Logout of a channel
     """
-    kwargs = {key: val for key, val in kwargs.items() if val is not None}
     settings = get_channel_settings(channel.canonical_name)
 
     if settings is None:
         raise CondaAuthError("Unable to find information about logged in session.")
-
-    settings.update(kwargs)
 
     settings["type"] = settings["auth"]
     auth_type, auth_manager = get_auth_manager(settings)
