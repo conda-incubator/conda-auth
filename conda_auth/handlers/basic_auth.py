@@ -4,6 +4,7 @@ Basic auth implementation for the conda auth handler plugin hook
 from __future__ import annotations
 
 from getpass import getpass
+from collections.abc import Mapping
 
 import keyring
 from keyring.errors import PasswordDeleteError
@@ -27,7 +28,7 @@ class BasicAuthManager(AuthManager):
         return f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel_name}"
 
     def _fetch_secret(
-        self, channel: Channel, settings: dict[str, str | None]
+        self, channel: Channel, settings: Mapping[str, str | None]
     ) -> tuple[str, str]:
         """
         Gets the secrets by checking the keyring and then falling back to interrupting
@@ -38,7 +39,9 @@ class BasicAuthManager(AuthManager):
 
         return username, password
 
-    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
+    def remove_secret(
+        self, channel: Channel, settings: Mapping[str, str | None]
+    ) -> None:
         keyring_id = self.get_keyring_id(channel.canonical_name)
         username = self.get_username(settings, channel)
 
@@ -66,7 +69,7 @@ class BasicAuthManager(AuthManager):
         print(f"Please provide credentials for channel: {channel.canonical_name}")
         return input("Username: ")
 
-    def get_username(self, settings: dict[str, str | None], channel: Channel):
+    def get_username(self, settings: Mapping[str, str | None], channel: Channel):
         """
         Attempts to find username in settings and falls back to prompting user for it if not found.
         """
@@ -78,7 +81,7 @@ class BasicAuthManager(AuthManager):
         return username
 
     def get_password(
-        self, username: str, settings: dict[str, str | None], channel: Channel
+        self, username: str, settings: Mapping[str, str | None], channel: Channel
     ) -> str:
         """
         Attempts to get password and falls back to prompting the user for it if not found.

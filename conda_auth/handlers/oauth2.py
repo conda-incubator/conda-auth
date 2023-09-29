@@ -3,6 +3,8 @@ OAuth2 implementation for the conda auth handler plugin hook
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import keyring
 from keyring.errors import PasswordDeleteError
 from conda.base.context import context
@@ -28,7 +30,7 @@ class OAuth2Manager(AuthManager):
         return f"{PLUGIN_NAME}::{OAUTH2_NAME}::{channel_name}"
 
     def _fetch_secret(
-        self, channel: Channel, settings: dict[str, str | None]
+        self, channel: Channel, settings: Mapping[str, str | None]
     ) -> tuple[str, str]:
         """
         Gets the secrets by checking the keyring and then falling back to interrupting
@@ -53,7 +55,9 @@ class OAuth2Manager(AuthManager):
 
         return USERNAME, token
 
-    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
+    def remove_secret(
+        self, channel: Channel, settings: Mapping[str, str | None]
+    ) -> None:
         keyring_id = self.get_keyring_id(channel.canonical_name)
 
         try:
@@ -89,7 +93,6 @@ class OAuth2Handler(ChannelAuthBase):
 
     def __init__(self, channel_name: str):
         _, self.token = manager.get_secret(channel_name)
-        breakpoint()
 
         if self.token is None:
             raise CondaError(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import MutableMapping
+
 import click
 from conda.base.context import context
 from conda.models.channel import Channel
@@ -24,7 +26,7 @@ def parse_channel(ctx, param, value):
 
 def get_auth_manager(options) -> tuple[str, AuthManager]:
     """
-    Based on CLI options provided, return the correct auth manager to use
+    Based on CLI options provided, return the correct auth manager to use.
     """
     auth_type = options.get("type") or options.get("auth")
 
@@ -48,7 +50,7 @@ def get_auth_manager(options) -> tuple[str, AuthManager]:
     return auth_type, auth_manager
 
 
-def get_channel_settings(channel: str) -> dict[str, str] | None:
+def get_channel_settings(channel: str) -> MutableMapping[str, str] | None:
     """
     Retrieve the channel settings from the context object
     """
@@ -70,9 +72,13 @@ def auth_wrapper(args):
 
 
 @group.command("login")
-@click.option("-u", "--username")
-@click.option("-p", "--password")
-@click.option("-t", "--type")
+@click.option("-u", "--username", help="Username to use for HTTP Basic Authentication")
+@click.option("-p", "--password", help="Password to use for HTTP Basic Authentication")
+@click.option(
+    "-t",
+    "--type",
+    help='Manually specify the type of authentication to use. Choices are: "http-basic"',
+)
 @click.argument("channel", callback=parse_channel)
 def login(channel: Channel, **kwargs):
     """
@@ -90,7 +96,7 @@ def login(channel: Channel, **kwargs):
         condarc.update_channel_settings(channel.canonical_name, username, auth_type)
         condarc.save()
     except CondaRCError as exc:
-        raise CondaAuthError(exc)
+        raise CondaAuthError(str(exc))
 
 
 @group.command("logout")
@@ -100,11 +106,14 @@ def logout(channel: Channel, **kwargs):
     """
     Logout of a channel
     """
+    kwargs = {key: val for key, val in kwargs.items() if val is not None}
     settings = get_channel_settings(channel.canonical_name)
 
     if settings is None:
         raise CondaAuthError("Unable to find information about logged in session.")
 
+    settings.update(kwargs)
+
     settings["type"] = settings["auth"]
     auth_type, auth_manager = get_auth_manager(settings)
-    auth_manager.remove_secret(channel, kwargs)
+    auth_manager.remove_secret(channel, settings)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 
 import conda.base.context
 import keyring
@@ -39,7 +40,7 @@ class AuthManager(ABC):
                 ):
                     self.authenticate(channel, settings)
 
-    def authenticate(self, channel: Channel, settings: dict[str, str]) -> str:
+    def authenticate(self, channel: Channel, settings: Mapping[str, str]) -> str:
         """Used to retrieve credentials and store them on the ``cache`` property"""
         extra_params = {
             param: settings.get(param) for param in self.get_config_parameters()
@@ -63,7 +64,7 @@ class AuthManager(ABC):
         )
 
     def fetch_secret(
-        self, channel: Channel, settings: dict[str, str | None]
+        self, channel: Channel, settings: Mapping[str, str | None]
     ) -> tuple[str, str]:
         """
         Fetch secrets and handle updating cache.
@@ -89,12 +90,12 @@ class AuthManager(ABC):
 
     @abstractmethod
     def _fetch_secret(
-        self, channel: Channel, settings: dict[str, str | None]
+        self, channel: Channel, settings: Mapping[str, str | None]
     ) -> tuple[str, str]:
         """Implementations should include routine for fetching secret"""
 
     @abstractmethod
-    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
+    def remove_secret(self, channel: Channel, settings: Mapping[str, str]) -> None:
         """Implementations should include routine for removing secret"""
 
     @abstractmethod
