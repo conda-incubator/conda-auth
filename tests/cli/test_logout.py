@@ -1,4 +1,4 @@
-from conda_auth.cli import group
+from conda_auth.cli import group, SUCCESSFUL_LOGOUT_MESSAGE
 from conda_auth.constants import HTTP_BASIC_AUTH_NAME, PLUGIN_NAME
 from conda_auth.exceptions import CondaAuthError
 
@@ -21,7 +21,7 @@ def test_logout_of_active_session(mocker, runner, keyring):
     # run command
     result = runner.invoke(group, ["logout", channel_name])
 
-    assert result.output == ""
+    assert SUCCESSFUL_LOGOUT_MESSAGE in result.output
     assert result.exit_code == 0
 
     # Make sure the delete password call was invoked correctly

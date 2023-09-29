@@ -8,13 +8,16 @@ from conda.models.channel import Channel
 
 from .condarc import CondaRC, CondaRCError
 from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
-from .exceptions import CondaAuthError
+from .exceptions import CondaAuthError, InvalidCredentialsError
 from .handlers import AuthManager, oauth2_manager, basic_auth_manager
 
 AUTH_MANAGER_MAPPING = {
     OAUTH2_NAME: oauth2_manager,
     HTTP_BASIC_AUTH_NAME: basic_auth_manager,
 }
+SUCCESSFUL_LOGIN_MESSAGE = "Successfully logged in"
+SUCCESSFUL_LOGOUT_MESSAGE = "Successfully logged out"
+MAX_LOGIN_ATTEMPTS = 3
 
 
 def parse_channel(ctx, param, value):
@@ -89,7 +92,19 @@ def login(channel: Channel, **kwargs):
     settings.update(kwargs)
 
     auth_type, auth_manager = get_auth_manager(settings)
-    username = auth_manager.authenticate(channel, settings)
+    attempts = 0
+
+    while True:
+        try:
+            username = auth_manager.authenticate(channel, settings)
+            break
+        except InvalidCredentialsError as exc:
+            auth_manager.remove_channel_cache(channel.canonical_name)
+            attempts += 1
+            if attempts >= MAX_LOGIN_ATTEMPTS:
+                raise CondaAuthError(f"Max attempts reached; {exc}")
+
+    click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg="green"))
 
     try:
         condarc = CondaRC()
@@ -113,3 +128,5 @@ def logout(channel: Channel):
     settings["type"] = settings["auth"]
     auth_type, auth_manager = get_auth_manager(settings)
     auth_manager.remove_secret(channel, settings)
+
+    click.echo(click.style(SUCCESSFUL_LOGOUT_MESSAGE, fg="green"))

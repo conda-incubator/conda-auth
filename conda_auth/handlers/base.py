@@ -9,7 +9,7 @@ import requests
 from conda.gateways.connection.session import CondaSession
 from conda.models.channel import Channel
 
-from ..exceptions import CondaAuthError
+from ..exceptions import InvalidCredentialsError
 
 INVALID_CREDENTIALS_ERROR_MESSAGE = "Provided credentials are not correct."
 
@@ -41,7 +41,12 @@ class AuthManager(ABC):
                     self.authenticate(channel, settings)
 
     def authenticate(self, channel: Channel, settings: Mapping[str, str]) -> str:
-        """Used to retrieve credentials and store them on the ``cache`` property"""
+        """
+        Used to retrieve credentials and store them on the ``cache`` property
+
+        This method returns a "username" because this property could have been retrieved
+        via user input while calling ``fetch_secret``.
+        """
         extra_params = {
             param: settings.get(param) for param in self.get_config_parameters()
         }
@@ -87,6 +92,15 @@ class AuthManager(ABC):
             return None, None
 
         return secrets
+
+    def remove_channel_cache(self, channel_name: str) -> None:
+        """
+        Removes the cached secret for the given channel name
+        """
+        try:
+            del self._cache[channel_name]
+        except KeyError:
+            pass
 
     @abstractmethod
     def _fetch_secret(
@@ -149,4 +163,4 @@ def verify_credentials(channel: Channel, auth_cls: type) -> None:
             else:
                 error_message = str(exc)
 
-            raise CondaAuthError(error_message)
+            raise InvalidCredentialsError(error_message)

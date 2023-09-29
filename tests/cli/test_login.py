@@ -1,7 +1,8 @@
-from conda_auth.cli import group
+from conda_auth.cli import group, SUCCESSFUL_LOGIN_MESSAGE
 from conda_auth.condarc import CondaRCError
 from conda_auth.constants import HTTP_BASIC_AUTH_NAME
-from conda_auth.exceptions import CondaAuthError
+from conda_auth.exceptions import CondaAuthError, InvalidCredentialsError
+from conda_auth.handlers.base import INVALID_CREDENTIALS_ERROR_MESSAGE
 
 
 def test_login_no_options_basic_auth(mocker, runner, session, keyring, condarc):
@@ -24,7 +25,7 @@ def test_login_no_options_basic_auth(mocker, runner, session, keyring, condarc):
     result = runner.invoke(group, ["login", channel_name])
 
     assert result.exit_code == 0
-    assert result.output == ""
+    assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
 def test_login_with_options_basic_auth(mocker, runner, session, keyring, condarc):
@@ -44,7 +45,7 @@ def test_login_with_options_basic_auth(mocker, runner, session, keyring, condarc
     )
 
     assert result.exit_code == 0
-    assert result.output == ""
+    assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
 def test_login_with_invalid_auth_type(mocker, runner, session, keyring, condarc):
@@ -87,7 +88,7 @@ def test_login_with_non_existent_channel(mocker, runner, session, keyring, conda
     result = runner.invoke(group, ["login", channel_name], input="user")
 
     assert result.exit_code == 0
-    assert result.output == ""
+    assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
 def test_login_succeeds_error_returned_when_updating_condarc(
@@ -114,3 +115,28 @@ def test_login_succeeds_error_returned_when_updating_condarc(
 
     assert exc_type == CondaAuthError
     assert "Could not save file" == exception.message
+
+
+def test_login_exceed_max_login_retries(mocker, runner, session, keyring, condarc):
+    """
+    Test the case where the login runs successfully but an error is returned when trying to update
+    the condarc file.
+    """
+    channel_name = "tester"
+
+    # setup mocks
+    mocker.patch("conda_auth.cli.context")
+    mock_manager = mocker.patch("conda_auth.cli.get_auth_manager")
+    mock_type = "http-basic"
+    mock_auth_manager = mocker.MagicMock()
+    mock_auth_manager.authenticate.side_effect = InvalidCredentialsError(
+        INVALID_CREDENTIALS_ERROR_MESSAGE
+    )
+    mock_manager.return_value = (mock_type, mock_auth_manager)
+
+    # run command
+    result = runner.invoke(group, ["login", channel_name], input="user")
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type == CondaAuthError
+    assert "Max attempts reached" in exception.message
