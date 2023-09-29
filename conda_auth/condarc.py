@@ -38,7 +38,7 @@ class CondaRC:
         """
         updated_settings = {"channel": channel, "auth": auth_type, "username": username}
 
-        channel_settings = self.loaded_yaml.get("channel_settings", [])
+        channel_settings = self.loaded_yaml.get("channel_settings", []) or []
 
         # Filter out the existing channel's entry if it's there
         filter_settings = [

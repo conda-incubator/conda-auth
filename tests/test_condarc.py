@@ -9,6 +9,7 @@ from conda_auth.condarc import CondaRC, CondaRCError, yaml
 CONDARC_CONTENT = """
 channels:
 - defaults
+channel_settings:
 """
 
 
@@ -41,6 +42,10 @@ def test_update_non_existing_condarc_file(tmp_path):
 def test_update_existing_condarc_file(tmp_path):
     """
     Make sure that the condarc file can be updated even when it does exist
+
+    TODO:
+        It might be nice to expand this test in the future with some more condarc
+        file states via a pytest.parameters decorator.
     """
     channel = "tester"
     username = "username"

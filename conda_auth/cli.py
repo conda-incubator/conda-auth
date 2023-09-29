@@ -17,6 +17,7 @@ AUTH_MANAGER_MAPPING = {
 }
 SUCCESSFUL_LOGIN_MESSAGE = "Successfully logged in"
 SUCCESSFUL_LOGOUT_MESSAGE = "Successfully logged out"
+SUCCESSFUL_COLOR = "green"
 MAX_LOGIN_ATTEMPTS = 3
 
 
@@ -104,7 +105,7 @@ def login(channel: Channel, **kwargs):
             if attempts >= MAX_LOGIN_ATTEMPTS:
                 raise CondaAuthError(f"Max attempts reached; {exc}")
 
-    click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg="green"))
+    click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg=SUCCESSFUL_COLOR))
 
     try:
         condarc = CondaRC()
@@ -129,4 +130,4 @@ def logout(channel: Channel):
     auth_type, auth_manager = get_auth_manager(settings)
     auth_manager.remove_secret(channel, settings)
 
-    click.echo(click.style(SUCCESSFUL_LOGOUT_MESSAGE, fg="green"))
+    click.echo(click.style(SUCCESSFUL_LOGOUT_MESSAGE, fg=SUCCESSFUL_COLOR))
