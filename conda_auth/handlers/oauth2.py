@@ -3,6 +3,8 @@ OAuth2 implementation for the conda auth handler plugin hook
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import keyring
 from keyring.errors import PasswordDeleteError
 from conda.base.context import context
@@ -10,7 +12,7 @@ from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import OAUTH2_NAME, LOGOUT_ERROR_MESSAGE
+from ..constants import OAUTH2_NAME, LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
 from ..exceptions import CondaAuthError
 from .base import AuthManager
 
@@ -25,10 +27,10 @@ USERNAME = "token"
 
 class OAuth2Manager(AuthManager):
     def get_keyring_id(self, channel_name: str) -> str:
-        return f"{OAUTH2_NAME}::{channel_name}"
+        return f"{PLUGIN_NAME}::{OAUTH2_NAME}::{channel_name}"
 
     def _fetch_secret(
-        self, channel: Channel, settings: dict[str, str | None]
+        self, channel: Channel, settings: Mapping[str, str | None]
     ) -> tuple[str, str]:
         """
         Gets the secrets by checking the keyring and then falling back to interrupting
@@ -53,7 +55,9 @@ class OAuth2Manager(AuthManager):
 
         return USERNAME, token
 
-    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
+    def remove_secret(
+        self, channel: Channel, settings: Mapping[str, str | None]
+    ) -> None:
         keyring_id = self.get_keyring_id(channel.canonical_name)
 
         try:
@@ -73,6 +77,9 @@ class OAuth2Manager(AuthManager):
         """
         print(f"Follow link to login: {login_url}")
         return input("Copy and paste login token here: ")
+
+    def get_auth_class(self) -> type:
+        return OAuth2Handler
 
 
 manager = OAuth2Manager(context)

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 
 import conda.base.context
 import keyring
 import requests
-from conda.gateways.connection.session import get_session
+from conda.gateways.connection.session import CondaSession
 from conda.models.channel import Channel
 
-from ..exceptions import CondaAuthError
+from ..exceptions import InvalidCredentialsError
 
 INVALID_CREDENTIALS_ERROR_MESSAGE = "Provided credentials are not correct."
 
@@ -39,15 +40,22 @@ class AuthManager(ABC):
                 ):
                     self.authenticate(channel, settings)
 
-    def authenticate(self, channel: Channel, settings: dict[str, str]) -> None:
-        """Used to retrieve credentials and store them on the ``cache`` property"""
+    def authenticate(self, channel: Channel, settings: Mapping[str, str]) -> str:
+        """
+        Used to retrieve credentials and store them on the ``cache`` property
+
+        This method returns a "username" because this property could have been retrieved
+        via user input while calling ``fetch_secret``.
+        """
         extra_params = {
             param: settings.get(param) for param in self.get_config_parameters()
         }
         username, secret = self.fetch_secret(channel, extra_params)
 
-        verify_credentials(channel)
+        verify_credentials(channel, self.get_auth_class())
         self.save_credentials(channel, username, secret)
+
+        return username
 
     def save_credentials(self, channel: Channel, username: str, secret: str) -> None:
         """
@@ -61,7 +69,7 @@ class AuthManager(ABC):
         )
 
     def fetch_secret(
-        self, channel: Channel, settings: dict[str, str | None]
+        self, channel: Channel, settings: Mapping[str, str | None]
     ) -> tuple[str, str]:
         """
         Fetch secrets and handle updating cache.
@@ -85,14 +93,23 @@ class AuthManager(ABC):
 
         return secrets
 
+    def remove_channel_cache(self, channel_name: str) -> None:
+        """
+        Removes the cached secret for the given channel name
+        """
+        try:
+            del self._cache[channel_name]
+        except KeyError:
+            pass
+
     @abstractmethod
     def _fetch_secret(
-        self, channel: Channel, settings: dict[str, str | None]
+        self, channel: Channel, settings: Mapping[str, str | None]
     ) -> tuple[str, str]:
         """Implementations should include routine for fetching secret"""
 
     @abstractmethod
-    def remove_secret(self, channel: Channel, settings: dict[str, str | None]) -> None:
+    def remove_secret(self, channel: Channel, settings: Mapping[str, str]) -> None:
         """Implementations should include routine for removing secret"""
 
     @abstractmethod
@@ -115,15 +132,27 @@ class AuthManager(ABC):
         Implementation should return the keyring id that will be used by the manager classes
         """
 
+    @abstractmethod
+    def get_auth_class(self) -> type:
+        """
+        Returns the authentication class to use (requests.auth.AuthBase subclass) for the given
+        authentication manager
+        """
 
-def verify_credentials(channel: Channel) -> None:
+
+def verify_credentials(channel: Channel, auth_cls: type) -> None:
     """
     Verify the credentials that have been currently set for the channel.
 
     Raises exception if unable to make a successful request.
+
+    TODO:
+        We need a better way to tell if the credentials work. We might need
+        to fetch (or perform a HEAD request) on something specific like
+        repodata.json.
     """
     for url in channel.base_urls:
-        session = get_session(url)
+        session = CondaSession(auth=auth_cls(channel.canonical_name))
         resp = session.head(url, allow_redirects=False)
 
         try:
@@ -134,4 +163,4 @@ def verify_credentials(channel: Channel) -> None:
             else:
                 error_message = str(exc)
 
-            raise CondaAuthError(error_message)
+            raise InvalidCredentialsError(error_message)
