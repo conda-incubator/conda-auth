@@ -34,4 +34,4 @@ n/a (first release! 😅)
 
 <!-- Hyperlinks --->
 
-[0.1.0]: https://github.com/conda-incubator/conda-auth/releases/tag/0.0.1
+[0.0.1]: https://github.com/conda-incubator/conda-auth/releases/tag/0.0.1
