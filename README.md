@@ -29,7 +29,7 @@ The conda-auth project aims to solve this problem by storing credentials in an e
 
 Using this plugin will then ensure that users are storing their user credentials in a safer manner.
 
-## How to Contribute to this project?
+## Contributing to This Project
 Contributions are very welcome to this project! 
 
 Feel free to:
