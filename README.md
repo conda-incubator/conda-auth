@@ -9,8 +9,7 @@ Conda auth is a plugin that handles various authentication schemes as well as lo
 On top of this, conda-auth supports session management via two subcommands for logging into services (conda auth login) and logging out of services (conda auth logout).
 
 ## Installation
-To start using conda auth, we recommend installing to your base environment:
-
+Install `conda-auth` into your base environment from the `conda-forge` channel:
 ```
 conda install --name base --channel conda-forge conda-auth
 ```
@@ -36,8 +35,13 @@ Contributions are very welcome to this project!
 Feel free to:
 1. File bug reports
 2. Create feature requests
-3. Open pull requests fixing bugs, or adding new features
+3. Open pull requests to resolve issues available in the [Github issues queue](https://github.com/conda-incubator/conda-auth/issues).
 4. Review open pull requests
-5. Engage in ongoing discussions in this project and add new ideas.
+5. Report any typos, wrong/outdated information on the [project website](https://conda-incubator.github.io/conda-auth/).
+6. Engage in ongoing discussions in this project and add new ideas.
+
+Head to the [Developers Guide](https://conda-incubator.github.io/conda-auth/dev/) for this project to learn how to set up your development environment. 
 
 Do join the [conda Matrix chat](https://app.element.io/#/room/#conda:matrix.org) to get in touch with the rest of conda community and post any questions that you might have. 
+
+Happy Contributing!
