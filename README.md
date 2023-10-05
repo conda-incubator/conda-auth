@@ -1,6 +1,11 @@
 # conda-auth
 
-A conda plugin for ensuring that user credentials are not compromised while using conda channels requiring HTTP Basic Authentication and OAuth Authentication.
+A conda plugin for handling various HTTP based authentication schemes.
+
+Conda auth is a plugin that handles various authentication schemes as well as login session management. Currently, the following authentication schemes are supported:
+
+HTTP Basic Authentication
+On top of this, conda-auth supports session management via two subcommands for logging into services (conda auth login) and logging out of services (conda auth logout).
 
 ## Why conda-auth?
 
@@ -18,11 +23,10 @@ The conda-auth project aims to solve this problem by storing credentials in an e
 Using this plugin will then ensure that users are storing their user credentials in a safer manner.
 
 ## Installation
-To install this plugin please run the following commands:
+To start using conda auth, we recommend installing to your base environment:
+
 ```
-git clone https://github.com/conda-incubator/conda-auth
-cd conda-auth
-pip install -e .
+conda install --name base --channel conda-forge conda-auth
 ```
 
 ## How to Contribute to this project?
