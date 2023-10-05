@@ -18,7 +18,21 @@ The conda-auth project aims to solve this problem by storing credentials in an e
 Using this plugin will then ensure that users are storing their user credentials in a safer manner.
 
 ## Installation
-Instructions about how to install this plugin and set it up to work with conda
+To install this plugin please run the following commands:
+```
+git clone https://github.com/conda-incubator/conda-auth
+cd conda-auth
+pip install -e .
+```
 
 ## How to Contribute to this project?
-Instructions about forking the project, and start contributing. 
+Contributions are very welcome to this project! 
+
+Feel free to:
+1. File bug reports
+2. Create feature requests
+3. Open pull requests fixing bugs, or adding new features
+4. Review open pull requests
+5. Engage in ongoing discussions in this project and add new ideas.
+
+Do join the [conda Matrix chat](https://app.element.io/#/room/#conda:matrix.org) to get in touch with the rest of conda community and post any questions that you might have. 
