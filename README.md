@@ -1,33 +1,33 @@
 # conda-auth
 
-A conda plugin for handling various HTTP based authentication schemes.
+A conda plugin for handling authenticated access to private channels.
 
-Conda auth is a plugin that handles various authentication schemes as well as login session management. Currently, the following authentication schemes are supported:
+Conda auth currently supports the following types of authentication:
 
 - HTTP Basic Authentication
 
-On top of this, conda-auth supports session management via two subcommands for logging into services (conda auth login) and logging out of services (conda auth logout).
+On top of this, conda auth supports session management via two subcommands for logging into services (`conda auth login`) and logging out of services (`conda auth logout`).
 
 ## Installation
-Install `conda-auth` into your base environment from the `conda-forge` channel:
+Conda auth is available on conda-forge. As with all conda plugins, this must be installed into your base environment:
 ```
 conda install --name base --channel conda-forge conda-auth
 ```
 
-## Why conda-auth?
+## Usage
 
-Currently when using conda, if you want use a channel that requires the use of HTTP Basic Authentication, you need to store your user credentials in your `.condarc` file:
+**Log in** to a channel protected by HTTP basic authentication:
 
 ```
-channels:
-  - https://username:password@example.com/channel
+conda auth login https://example.com/my-protected-channel --username $USERNAME
 ```
 
-The example above has one primary problem: storing credentials in clear text. This is a practice that is frowned upon generally and one we should avoid if possible.
+**Log out** of a channel to remove credentials from your computer:
 
-The conda-auth project aims to solve this problem by storing credentials in an encrypted and password protected manner. This is accomplished by introducing a dependency on the [keyring project](https://github.com/jaraco/keyring). This Python library uses the underlying secret store mechanism for many types of desktop operating systems, including Windows, OSX and Linux.
+```
+conda auth logout https://example.com/my-protected-channel
+```
 
-Using this plugin will then ensure that users are storing their user credentials in a safer manner.
 
 ## Contributing to This Project
 Contributions are very welcome to this project! 
@@ -37,7 +37,7 @@ Feel free to:
 2. Create feature requests
 3. Open pull requests to resolve issues available in the [Github issues queue](https://github.com/conda-incubator/conda-auth/issues).
 4. Review open pull requests
-5. Report any typos, wrong/outdated information on the [project website](https://conda-incubator.github.io/conda-auth/).
+5. Report any typos, wrong/outdated information on the [documentation website](https://conda-incubator.github.io/conda-auth/).
 6. Engage in ongoing discussions in this project and add new ideas.
 
 Head to the [Developers Guide](https://conda-incubator.github.io/conda-auth/dev/) for this project to learn how to set up your development environment. 
