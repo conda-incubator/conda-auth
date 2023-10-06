@@ -8,14 +8,22 @@ User Guide <user/index>
 Developer Guide <dev/index>
 ```
 
-
 Conda auth is a conda plugin which adds more secure authentication support to conda.
 
-Once installed, it provides two new commands you can use to authenticate against
-protected, private conda channels:
+Once installed, it provides two new commands you can use to manage credentials and 
+access private conda channels:
 
-- `conda auth login` for logging into and storing your credentials
-- `conda auth logout` for logging out of and remove your credentials
+- `conda auth login` for logging into a private channel and storing your credentials
+- `conda auth logout` for logging out of a private channel and removing your credentials
+
+## Installation
+
+Conda auth is available on conda-forge. As with all conda plugins, this must be installed
+into your base environment:
+
+```
+conda install --name base --channel conda-forge conda-auth
+```
 
 ## Usage
 
@@ -29,14 +37,6 @@ conda auth login https://example.com/my-protected-channel --username $USERNAME
 
 ```
 conda auth logout https://example.com/my-protected-channel
-```
-
-## Installation
-
-To start using conda auth, we recommend installing to your base environment:
-
-```
-conda install --name base --channel conda-forge conda-auth
 ```
 
 <hr style="margin-bottom: 2em; margin-top: 2em" />
