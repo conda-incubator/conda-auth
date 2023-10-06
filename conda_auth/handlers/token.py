@@ -1,5 +1,5 @@
 """
-OAuth2 implementation for the conda auth handler plugin hook
+Token implementation for the conda auth handler plugin hook
 """
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from ..constants import LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
 from ..exceptions import CondaAuthError
 from .base import AuthManager
 
-LOGIN_URL_PARAM_NAME = "login_url"
+TOKEN_PARAM_NAME = "token"
 """
-Setting name that appears in configuration; used to direct user to correct login screen.
+Name of the configuration parameter where token information is stored
 """
 
 USERNAME = "token"
@@ -26,15 +26,15 @@ USERNAME = "token"
 Placeholder value for username; This is written to the secret storage backend
 """
 
-OAUTH2_NAME = "oauth2"
+TOKEN_NAME = "token"
 """
 Name used to refer to this authentication handler in configuration
 """
 
 
-class OAuth2Manager(AuthManager):
+class TokenAuthManager(AuthManager):
     def get_keyring_id(self, channel_name: str) -> str:
-        return f"{PLUGIN_NAME}::{OAUTH2_NAME}::{channel_name}"
+        return f"{PLUGIN_NAME}::{TOKEN_NAME}::{channel_name}"
 
     def _fetch_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
@@ -43,22 +43,11 @@ class OAuth2Manager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for secret.
         """
-        login_url = settings.get(LOGIN_URL_PARAM_NAME)
-
-        if login_url is None:
-            raise CondaAuthError(
-                f'`login_url` is not set for channel "{channel.canonical_name}"; '
-                "please set this value in `channel_settings` before attempting to use this "
-                "channel with the "
-                f"{self.get_auth_type()} auth handler."
-            )
-
         keyring_id = self.get_keyring_id(channel.canonical_name)
-
         token = keyring.get_password(keyring_id, USERNAME)
 
         if token is None:
-            token = self.prompt_token(login_url)
+            token = self.get_token(settings)
 
         return USERNAME, token
 
@@ -73,33 +62,62 @@ class OAuth2Manager(AuthManager):
             raise CondaAuthError(f"{LOGOUT_ERROR_MESSAGE} {exc}")
 
     def get_auth_type(self) -> str:
-        return OAUTH2_NAME
+        return TOKEN_NAME
 
     def get_config_parameters(self) -> tuple[str, ...]:
-        return (LOGIN_URL_PARAM_NAME,)
+        return (TOKEN_PARAM_NAME,)
 
-    def prompt_token(self, login_url: str) -> str:
+    def get_token(self, settings: Mapping[str, str | None]):
+        """
+        Attempt to first retrieve token from settings and then prompt the user for it.
+        """
+        token = settings.get(TOKEN_PARAM_NAME)
+
+        if token is None:
+            token = self.prompt_token()
+
+        return token
+
+    def prompt_token(self) -> str:
         """
         This can be overriden for classes that do not want to use the built-in function ``input``.
         """
-        print(f"Follow link to login: {login_url}")
-        return input("Copy and paste login token here: ")
+        return input("Token: ")
 
     def get_auth_class(self) -> type:
-        return OAuth2Handler
+        return TokenAuthHandler
 
 
-manager = OAuth2Manager(context)
+manager = TokenAuthManager(context)
 
 
-class OAuth2Handler(ChannelAuthBase):
+def is_anaconda_dot_org(channel_name: str) -> bool:
     """
-    Implementation of OAuth2 that relies on a cache location for retrieving bearer token on
-    object instantiation.
+    Determines whether the ``channel_name`` is a https://anaconda.org channel
+    """
+    channel = Channel(channel_name)
+    domain_name = "anaconda.org"
+
+    return any(domain_name in url for url in channel.base_urls)
+
+
+class TokenAuthHandler(ChannelAuthBase):
+    """
+    Implements token auth that inserts a token as a header for all network request
+    in conda for the channel specified on object instantiation.
+
+    We make a special exception for anaconda.org and set the Authentication header as:
+
+        Authentication: token <token>
+
+    In all other cases, we use the "bearer" format:
+
+        Authentication: Bearer <token>
     """
 
     def __init__(self, channel_name: str):
         _, self.token = manager.get_secret(channel_name)
+        self.is_anaconda_dot_org = is_anaconda_dot_org(channel_name)
 
         if self.token is None:
             raise CondaError(
@@ -109,6 +127,9 @@ class OAuth2Handler(ChannelAuthBase):
         super().__init__(channel_name)
 
     def __call__(self, request):
-        request.headers["Authorization"] = f"Bearer {self.token}"
+        if self.is_anaconda_dot_org:
+            request.headers["Authorization"] = f"token {self.token}"
+        else:
+            request.headers["Authorization"] = f"Bearer {self.token}"
 
         return request

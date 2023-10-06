@@ -14,13 +14,24 @@ from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import HTTP_BASIC_AUTH_NAME, LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
+from ..constants import LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
 from ..exceptions import CondaAuthError
 from .base import AuthManager
 
 USERNAME_PARAM_NAME = "username"
+"""
+Name of the configuration parameter where username information is stored
+"""
 
 PASSWORD_PARAM_NAME = "password"
+"""
+Name of the configuration parameter where password information is stored
+"""
+
+HTTP_BASIC_AUTH_NAME = "http-basic"
+"""
+Name used to refer to this authentication handler in configuration
+"""
 
 
 class BasicAuthManager(AuthManager):

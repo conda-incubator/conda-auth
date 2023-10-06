@@ -2,9 +2,9 @@ import pytest
 from keyring.errors import PasswordDeleteError
 from conda.models.channel import Channel
 
-from conda_auth.handlers.oauth2 import USERNAME, manager
+from conda_auth.handlers.oauth2 import USERNAME, manager, OAUTH2_NAME
 from conda_auth.exceptions import CondaAuthError
-from conda_auth.constants import LOGOUT_ERROR_MESSAGE, OAUTH2_NAME
+from conda_auth.constants import LOGOUT_ERROR_MESSAGE
 
 
 @pytest.fixture(autouse=True)

@@ -9,7 +9,7 @@ import requests
 from conda.gateways.connection.session import CondaSession
 from conda.models.channel import Channel
 
-from ..exceptions import InvalidCredentialsError
+from ..exceptions import InvalidCredentialsError, CondaAuthError
 
 INVALID_CREDENTIALS_ERROR_MESSAGE = "Provided credentials are not correct."
 
@@ -52,7 +52,7 @@ class AuthManager(ABC):
         }
         username, secret = self.fetch_secret(channel, extra_params)
 
-        verify_credentials(channel, self.get_auth_class())
+        # verify_credentials(channel, self.get_auth_class())
         self.save_credentials(channel, username, secret)
 
         return username
@@ -153,9 +153,9 @@ def verify_credentials(channel: Channel, auth_cls: type) -> None:
     """
     for url in channel.base_urls:
         session = CondaSession(auth=auth_cls(channel.canonical_name))
-        resp = session.head(url, allow_redirects=False)
 
         try:
+            resp = session.head(url, allow_redirects=False)
             resp.raise_for_status()
         except requests.exceptions.HTTPError as exc:
             if exc.response.status_code == requests.codes["unauthorized"]:
@@ -164,3 +164,7 @@ def verify_credentials(channel: Channel, auth_cls: type) -> None:
                 error_message = str(exc)
 
             raise InvalidCredentialsError(error_message)
+
+        # Catch-all for all other requests exceptions
+        except requests.exceptions.RequestException as exc:
+            raise CondaAuthError(str(exc))

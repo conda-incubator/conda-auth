@@ -1,6 +1,6 @@
 from conda_auth.cli import group, SUCCESSFUL_LOGIN_MESSAGE
 from conda_auth.condarc import CondaRCError
-from conda_auth.constants import HTTP_BASIC_AUTH_NAME
+from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME
 from conda_auth.exceptions import CondaAuthError, InvalidCredentialsError
 from conda_auth.handlers.base import INVALID_CREDENTIALS_ERROR_MESSAGE
 

@@ -1,5 +1,6 @@
 from conda_auth.cli import group, SUCCESSFUL_LOGOUT_MESSAGE
-from conda_auth.constants import HTTP_BASIC_AUTH_NAME, PLUGIN_NAME
+from conda_auth.constants import PLUGIN_NAME
+from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME
 from conda_auth.exceptions import CondaAuthError
 
 
