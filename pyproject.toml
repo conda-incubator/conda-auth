@@ -23,13 +23,15 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy"
 ]
 dependencies = [
+  "click",
   "conda",
   "keyring",
   "requests",
+  "ruamel.yaml",
 ]
 
 [project.entry-points.conda]
 conda-auth = "conda_auth.hooks"
 
-[tool.setuptools]
-packages = ["conda_auth"]
+[tool.setuptools.packages]
+find = {}

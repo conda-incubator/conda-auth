@@ -1,4 +1,4 @@
-# conda-auth
+# conda auth
 
 A conda plugin for handling authenticated access to private channels.
 
@@ -9,6 +9,7 @@ Conda auth currently supports the following types of authentication:
 On top of this, conda auth supports session management via two subcommands for logging into services (`conda auth login`) and logging out of services (`conda auth logout`).
 
 ## Installation
+
 Conda auth is available on conda-forge. As with all conda plugins, this must be installed into your base environment:
 ```
 conda install --name base --channel conda-forge conda-auth
@@ -30,6 +31,7 @@ conda auth logout https://example.com/my-protected-channel
 
 
 ## Contributing to This Project
+
 Contributions are very welcome to this project! 
 
 Feel free to:

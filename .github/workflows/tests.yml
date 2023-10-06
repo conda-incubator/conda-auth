@@ -8,32 +8,126 @@ on:
     branches:
       - main
 
-jobs:
-  build:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
+jobs:
+  # detect whether any code changes are included in this PR
+  changes:
     runs-on: ubuntu-latest
+    permissions:
+      # necessary to detect changes
+      # https://github.com/dorny/paths-filter#supported-workflows
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v3
+        # dorny/paths-filter needs git clone for push events
+        # https://github.com/dorny/paths-filter#supported-workflows
+        if: github.event_name != 'pull_request'
+      - uses: dorny/paths-filter@v2.11.1
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'conda_auth/**'
+              - 'tests/**'
+              - '*.py'
+              - 'recipe/**'
+              - '.github/workflows/tests.yml'
+
+  windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+
+    runs-on: windows-latest
     strategy:
+      fail-fast: true
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.11"]
 
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Add conda to system path
+          fetch-depth: 0
+
+      - uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          init-shell: >-
+            powershell
+          cache-environment: false
+          cache-downloads: true
+          post-cleanup: 'all'
+
+      - name: micromamba info (pwsh)
+        shell: pwsh
+        run: micromamba info
+
+      - name: Install dev dependencies
+        shell: pwsh
         run: |
-          # $CONDA is an environment variable pointing to the root of the miniconda directory
-          echo $CONDA/bin >> $GITHUB_PATH
-      - name: Install dependencies (conda)
-        run: |
-          conda update -n base -c defaults conda
-          conda env update --file environment.yml --name base
-          conda install --file requirements.dev.txt
-      - name: Install conda-basic-auth
+          micromamba install --file requirements.dev.txt --yes
+
+      - name: micromamba list
+        shell: pwsh
+        run: micromamba list
+
+      - name: Install conda-auth
+        shell: pwsh
         run: |
           pip install -e .
+
       - name: Test with pytest
+        shell: pwsh
+        run: |
+          pytest --doctest-modules
+
+  unix-like:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.8", "3.11"]
+        os: ["macos-latest", "ubuntu-latest"]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: mamba-org/setup-micromamba@v1
+        with:
+          generate-run-shell: true
+          environment-file: environment.yml
+          init-shell: >-
+            bash
+          cache-environment: false
+          cache-downloads: true
+          post-cleanup: 'all'
+
+      - name: micromamba info
+        shell: bash -el {0}
+        run: micromamba info
+
+      - name: Install dev dependencies
+        shell: bash -el {0}
+        run: |
+          micromamba install --file requirements.dev.txt --yes
+
+      - name: micromamba list
+        shell: bash -el {0}
+        run: micromamba list
+
+      - name: Install conda-auth
+        shell: bash -el {0}
+        run: |
+          pip install -e .
+
+      - name: Test with pytest
+        shell: micromamba-shell {0}
         run: |
           pytest --doctest-modules

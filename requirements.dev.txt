@@ -1,6 +1,7 @@
 conda-forge::darker
 conda-forge::flake8
 conda-forge::mypy
+conda-forge::pip
 conda-forge::pyupgrade
 conda-forge::pytest
 conda-forge::pytest-cov
