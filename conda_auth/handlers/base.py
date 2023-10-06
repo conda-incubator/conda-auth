@@ -52,6 +52,8 @@ class AuthManager(ABC):
         }
         username, secret = self.fetch_secret(channel, extra_params)
 
+        # TODO: Having a hard time figuring out how to actually verify credentials
+        #       It might be better to just remove this check for now.
         # verify_credentials(channel, self.get_auth_class())
         self.save_credentials(channel, username, secret)
 
