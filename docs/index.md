@@ -17,7 +17,7 @@ protected, private conda channels:
 - `conda auth login` for logging into and storing your credentials
 - `conda auth logout` for logging out of and remove your credentials
 
-## Examples
+## Usage
 
 **Log in** to a channel protected by HTTP basic authentication:
 
