@@ -6,7 +6,6 @@ from click.testing import CliRunner
 
 
 class KeyringMocks(NamedTuple):
-    oauth2: MagicMock
     basic: MagicMock
     token: MagicMock
     base: MagicMock
@@ -20,27 +19,15 @@ def keyring(mocker):
 
     def _keyring(secret):
         token = mocker.patch("conda_auth.handlers.token.keyring")
-        oauth2 = mocker.patch("conda_auth.handlers.oauth2.keyring")
         basic = mocker.patch("conda_auth.handlers.basic_auth.keyring")
         base = mocker.patch("conda_auth.handlers.base.keyring")
 
-        oauth2.get_password.return_value = secret
         basic.get_password.return_value = secret
         token.get_password.return_value = secret
 
-        return KeyringMocks(oauth2, basic, token, base)
+        return KeyringMocks(basic, token, base)
 
     return _keyring
-
-
-@pytest.fixture
-def session(mocker):
-    """
-    Used to mock the get_session function from conda to mock network requests
-    """
-    session_mock = mocker.patch("conda_auth.handlers.base.CondaSession")
-
-    return session_mock
 
 
 @pytest.fixture

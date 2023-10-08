@@ -7,37 +7,28 @@ from conda.base.context import context
 from conda.models.channel import Channel
 
 from .condarc import CondaRC, CondaRCError
-from .exceptions import CondaAuthError, InvalidCredentialsError
+from .exceptions import CondaAuthError
 from .handlers import (
     AuthManager,
-    oauth2_manager,
     basic_auth_manager,
     token_auth_manager,
-    OAUTH2_NAME,
     HTTP_BASIC_AUTH_NAME,
     TOKEN_NAME,
 )
 
 # Constants
 AUTH_MANAGER_MAPPING = {
-    OAUTH2_NAME: oauth2_manager,
     HTTP_BASIC_AUTH_NAME: basic_auth_manager,
     TOKEN_NAME: token_auth_manager,
 }
 
-SUCCESSFUL_LOGIN_MESSAGE = "Successfully logged in"
+SUCCESSFUL_LOGIN_MESSAGE = "Successfully stored credentials"
 
-SUCCESSFUL_LOGOUT_MESSAGE = "Successfully logged out"
+SUCCESSFUL_LOGOUT_MESSAGE = "Successfully removed credentials"
 
 SUCCESSFUL_COLOR = "green"
 
-INVALID_CREDENTIALS_MESSAGE = "Invalid credentials"
-
-FAILURE_COLOR = "red"
-
-MAX_LOGIN_ATTEMPTS = 3
-
-VALID_AUTH_CHOICES = (HTTP_BASIC_AUTH_NAME, TOKEN_NAME)
+VALID_AUTH_CHOICES = tuple(AUTH_MANAGER_MAPPING.keys())
 
 
 def parse_channel(ctx, param, value):
@@ -131,27 +122,8 @@ def login(channel: Channel, **kwargs):
     settings.update(kwargs)
 
     auth_type, auth_manager = get_auth_manager(settings)
-    attempts = 0
 
-    while True:
-        try:
-            username = auth_manager.authenticate(channel, settings)
-            break
-        except InvalidCredentialsError as exc:
-            if settings.get("username") is not None:
-                settings = {"username": settings["username"]}
-            else:
-                settings = {}
-
-            auth_manager.remove_channel_cache(channel.canonical_name)
-            attempts += 1
-
-            if attempts >= MAX_LOGIN_ATTEMPTS:
-                raise CondaAuthError(
-                    click.style(f"Max attempts reached; {exc}", fg=FAILURE_COLOR)
-                )
-
-            click.echo(click.style(INVALID_CREDENTIALS_MESSAGE, fg=FAILURE_COLOR))
+    username = auth_manager.store(channel, settings)
 
     click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg=SUCCESSFUL_COLOR))
 

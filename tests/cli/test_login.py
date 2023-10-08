@@ -1,11 +1,10 @@
 from conda_auth.cli import group, SUCCESSFUL_LOGIN_MESSAGE
 from conda_auth.condarc import CondaRCError
 from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME
-from conda_auth.exceptions import CondaAuthError, InvalidCredentialsError
-from conda_auth.handlers.base import INVALID_CREDENTIALS_ERROR_MESSAGE
+from conda_auth.exceptions import CondaAuthError
 
 
-def test_login_no_options_basic_auth(mocker, runner, session, keyring, condarc):
+def test_login_no_options_basic_auth(mocker, runner, keyring, condarc):
     """
     Runs the login command with no additional CLI options defined (e.g. --username)
     """
@@ -28,7 +27,7 @@ def test_login_no_options_basic_auth(mocker, runner, session, keyring, condarc):
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
-def test_login_with_options_basic_auth(mocker, runner, session, keyring, condarc):
+def test_login_with_options_basic_auth(mocker, runner, keyring, condarc):
     """
     Runs the login command with CLI options defined (e.g. --username)
     """
@@ -48,7 +47,7 @@ def test_login_with_options_basic_auth(mocker, runner, session, keyring, condarc
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
-def test_login_with_invalid_auth_type(mocker, runner, session, keyring, condarc):
+def test_login_with_invalid_auth_type(mocker, runner, keyring, condarc):
     """
     Runs the login command when there is an invalid auth type configured in settings
     """
@@ -70,7 +69,7 @@ def test_login_with_invalid_auth_type(mocker, runner, session, keyring, condarc)
     assert "Invalid authentication type." in exception.message
 
 
-def test_login_with_non_existent_channel(mocker, runner, session, keyring, condarc):
+def test_login_with_non_existent_channel(mocker, runner, keyring, condarc):
     """
     Runs the login command for a channel that is not present in the settings file
     """
@@ -92,7 +91,7 @@ def test_login_with_non_existent_channel(mocker, runner, session, keyring, conda
 
 
 def test_login_succeeds_error_returned_when_updating_condarc(
-    mocker, runner, session, keyring, condarc
+    mocker, runner, keyring, condarc
 ):
     """
     Test the case where the login runs successfully but an error is returned when trying to update
@@ -117,26 +116,17 @@ def test_login_succeeds_error_returned_when_updating_condarc(
     assert "Could not save file" == exception.message
 
 
-def test_login_exceed_max_login_retries(mocker, runner, session, keyring, condarc):
+def test_login_with_token(mocker, runner, keyring, condarc):
     """
-    Test the case where the login runs successfully but an error is returned when trying to update
-    the condarc file.
+    Test successful login with token
     """
     channel_name = "tester"
 
     # setup mocks
-    mocker.patch("conda_auth.cli.context")
-    mock_manager = mocker.patch("conda_auth.cli.get_auth_manager")
-    mock_type = "http-basic"
-    mock_auth_manager = mocker.MagicMock()
-    mock_auth_manager.authenticate.side_effect = InvalidCredentialsError(
-        INVALID_CREDENTIALS_ERROR_MESSAGE
-    )
-    mock_manager.return_value = (mock_type, mock_auth_manager)
+    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context.channel_settings = []
+    keyring(None)
 
-    # run command
-    result = runner.invoke(group, ["login", channel_name], input="user")
-    exc_type, exception, _ = result.exc_info
+    result = runner.invoke(group, ["login", channel_name, "--token", "token"])
 
-    assert exc_type == CondaAuthError
-    assert "Max attempts reached" in exception.message
+    assert result.exit_code == 0
