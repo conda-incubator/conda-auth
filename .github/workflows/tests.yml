@@ -85,6 +85,13 @@ jobs:
         run: |
           pytest --doctest-modules --cov-report=xml --cov=conda_auth
 
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v2
+        with:
+          flags: ${{ runner.os }},${{ matrix.python-version }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   unix-like:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -134,5 +141,7 @@ jobs:
 
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v2
+        with:
+          flags: ${{ runner.os }},${{ matrix.python-version }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
