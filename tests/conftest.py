@@ -1,14 +1,5 @@
-from unittest.mock import MagicMock
-from typing import NamedTuple
-
 import pytest
 from click.testing import CliRunner
-
-
-class KeyringMocks(NamedTuple):
-    basic: MagicMock
-    token: MagicMock
-    base: MagicMock
 
 
 @pytest.fixture
@@ -18,14 +9,10 @@ def keyring(mocker):
     """
 
     def _keyring(secret):
-        token = mocker.patch("conda_auth.handlers.token.keyring")
-        basic = mocker.patch("conda_auth.handlers.basic_auth.keyring")
-        base = mocker.patch("conda_auth.handlers.base.keyring")
+        keyring_storage = mocker.patch("conda_auth.storage.keyring.keyring")
+        keyring_storage.get_password.return_value = secret
 
-        basic.get_password.return_value = secret
-        token.get_password.return_value = secret
-
-        return KeyringMocks(basic, token, base)
+        return keyring_storage
 
     return _keyring
 

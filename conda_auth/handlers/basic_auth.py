@@ -6,16 +6,14 @@ from __future__ import annotations
 from getpass import getpass
 from collections.abc import Mapping
 
-import keyring
-from keyring.errors import PasswordDeleteError
 from requests.auth import _basic_auth_str  # type: ignore
 from conda.base.context import context
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
-from ..exceptions import CondaAuthError
+from ..constants import PLUGIN_NAME
+from ..storage import storage
 from .base import AuthManager
 
 USERNAME_PARAM_NAME = "username"
@@ -56,10 +54,7 @@ class BasicAuthManager(AuthManager):
         keyring_id = self.get_keyring_id(channel.canonical_name)
         username = self.get_username(settings, channel)
 
-        try:
-            keyring.delete_password(keyring_id, username)
-        except PasswordDeleteError as exc:
-            raise CondaAuthError(f"{LOGOUT_ERROR_MESSAGE} {exc}")
+        storage.delete_password(keyring_id, username)
 
     def get_auth_type(self) -> str:
         return HTTP_BASIC_AUTH_NAME
@@ -98,7 +93,7 @@ class BasicAuthManager(AuthManager):
         Attempts to get password and falls back to prompting the user for it if not found.
         """
         keyring_id = self.get_keyring_id(channel.canonical_name)
-        password = keyring.get_password(keyring_id, username)
+        password = storage.get_password(keyring_id, username)
 
         if password is None:
             password = settings.get(PASSWORD_PARAM_NAME)

@@ -13,7 +13,6 @@ from conda_auth.handlers.basic_auth import (
     BasicAuthManager,
 )
 from conda_auth.exceptions import CondaAuthError
-from conda_auth.constants import LOGOUT_ERROR_MESSAGE
 
 
 @pytest.fixture(autouse=True)
@@ -115,7 +114,7 @@ def test_basic_auth_manager_cache_exists(keyring, getpass):
     # make assertions
     assert manager._cache == {channel.canonical_name: (username, secret)}
     getpass_mock.assert_not_called()
-    keyring_mock.basic.get_password.assert_not_called()
+    keyring_mock.get_password.assert_not_called()
 
 
 def test_basic_auth_manager_remove_existing_secret(keyring):
@@ -135,7 +134,7 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
     manager.remove_secret(channel, settings)
 
     # make assertions
-    keyring_mocks.basic.delete_password.assert_called_once()
+    keyring_mocks.delete_password.assert_called_once()
 
 
 def test_basic_auth_manager_remove_existing_secret_no_username(mocker, keyring):
@@ -158,7 +157,7 @@ def test_basic_auth_manager_remove_existing_secret_no_username(mocker, keyring):
 
     # make assertions
     input_mock.assert_called_once()
-    keyring_mocks.basic.delete_password.assert_called_once()
+    keyring_mocks.delete_password.assert_called_once()
 
 
 def test_basic_auth_manager_remove_non_existing_secret(keyring):
@@ -175,12 +174,12 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
     # setup mocks
     keyring_mocks = keyring(secret)
     message = "Secret not found."
-    keyring_mocks.basic.delete_password.side_effect = PasswordDeleteError(message)
+    keyring_mocks.delete_password.side_effect = PasswordDeleteError(message)
 
     # run code under test
 
     # make assertions
-    with pytest.raises(CondaAuthError, match=f"{LOGOUT_ERROR_MESSAGE} {message}"):
+    with pytest.raises(CondaAuthError, match=f"Unable to remove secret: {message}"):
         manager.remove_secret(channel, settings)
 
 
