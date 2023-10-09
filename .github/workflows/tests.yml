@@ -83,7 +83,7 @@ jobs:
       - name: Test with pytest
         shell: pwsh
         run: |
-          pytest --doctest-modules
+          pytest --doctest-modules --cov-report=xml --cov=conda_auth
 
   unix-like:
     needs: changes
@@ -130,4 +130,9 @@ jobs:
       - name: Test with pytest
         shell: micromamba-shell {0}
         run: |
-          pytest --doctest-modules
+          pytest --doctest-modules --cov-report=xml --cov=conda_auth
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v2
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
