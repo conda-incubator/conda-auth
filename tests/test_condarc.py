@@ -23,7 +23,7 @@ def test_update_non_existing_condarc_file(tmp_path):
     condarc_path = tmp_path / ".condarc"
 
     condarc = CondaRC(condarc_path)
-    condarc.update_channel_settings(channel, username, auth_type)
+    condarc.update_channel_settings(channel, auth_type, username)
     condarc.save()
 
     condarc_dict = yaml.load(condarc_path.read_text())
@@ -54,7 +54,7 @@ def test_update_existing_condarc_file(tmp_path):
     condarc_path.write_text(CONDARC_CONTENT)
 
     condarc = CondaRC(condarc_path)
-    condarc.update_channel_settings(channel, username, auth_type)
+    condarc.update_channel_settings(channel, auth_type, username)
     condarc.save()
 
     condarc_dict = yaml.load(condarc_path.read_text())
