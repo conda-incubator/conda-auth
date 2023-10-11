@@ -39,8 +39,8 @@ def test_conda_auth_handlers_hook():
     """
     objs = list(hooks.conda_auth_handlers())
 
-    assert objs[0].name == f"{PLUGIN_NAME}-{HTTP_BASIC_AUTH_NAME}"
+    assert objs[0].name == HTTP_BASIC_AUTH_NAME
     assert objs[0].handler == BasicAuthHandler
 
-    assert objs[1].name == f"{PLUGIN_NAME}-{TOKEN_NAME}"
+    assert objs[1].name == TOKEN_NAME
     assert objs[1].handler == TokenAuthHandler

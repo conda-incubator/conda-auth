@@ -32,11 +32,20 @@ class CondaRC:
         except YAMLError as exc:
             raise CondaRCError(f"Could not parse condarc: {exc}")
 
-    def update_channel_settings(self, channel: str, username: str, auth_type: str):
+    def update_channel_settings(
+        self, channel: str, auth_type: str, username: str | None = None
+    ):
         """
         Update the condarc file's "channel_settings" section
         """
-        updated_settings = {"channel": channel, "auth": auth_type, "username": username}
+        if username is None:
+            updated_settings = {"channel": channel, "auth": auth_type}
+        else:
+            updated_settings = {
+                "channel": channel,
+                "auth": auth_type,
+                "username": username,
+            }
 
         channel_settings = self.loaded_yaml.get("channel_settings", []) or []
 

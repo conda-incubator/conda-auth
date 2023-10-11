@@ -18,7 +18,7 @@ from conda_auth.exceptions import CondaAuthError
 @pytest.fixture(autouse=True)
 def clean_up_manager_cache():
     """Makes sure the manager cache gets emptied after each test run"""
-    manager._cache = {}
+    manager.cache_clear()
 
 
 def test_basic_auth_manager_no_previous_secret(keyring, getpass):

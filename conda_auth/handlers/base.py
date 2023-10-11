@@ -5,6 +5,7 @@ from collections.abc import Mapping
 
 import conda.base.context
 from conda.models.channel import Channel
+from conda.base.context import context as global_context
 
 from ..storage import storage
 
@@ -14,12 +15,15 @@ class AuthManager(ABC):
     Defines an interface for auth handlers to use within plugin
     """
 
-    def __init__(self, context: conda.base.context.Context, cache: dict | None = None):
+    def __init__(
+        self,
+        context: conda.base.context.Context | None = None,
+        cache: dict | None = None,
+    ):
         """
-        Optionally set a cache to use and configuration parameters to retrieve from
-        ``conda.base.context.context.channel_settings``.
+        Optionally set a cache and context object to use
         """
-        self._context = context
+        self._context = context or global_context
         self._cache = {} if cache is None else cache
 
     def hook_action(self, command: str) -> None:
@@ -55,9 +59,7 @@ class AuthManager(ABC):
         """
         Saves the provided credentials to our credential store.
         """
-        storage.set_password(
-            self.get_keyring_id(channel.canonical_name), username, secret
-        )
+        storage.set_password(self.get_keyring_id(channel), username, secret)
 
     def fetch_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
@@ -84,6 +86,15 @@ class AuthManager(ABC):
 
         return secrets
 
+    def cache_clear(self, channel_name: str | None = None) -> None:
+        """
+        Remove the internal cache for the manager object
+        """
+        if channel_name:
+            self._cache.pop(channel_name, None)
+        else:
+            self._cache.clear()
+
     @abstractmethod
     def _fetch_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
@@ -109,7 +120,7 @@ class AuthManager(ABC):
         """
 
     @abstractmethod
-    def get_keyring_id(self, channel_name: str) -> str:
+    def get_keyring_id(self, channel: Channel) -> str:
         """
         Implementation should return the keyring id that will be used by the manager classes
         """

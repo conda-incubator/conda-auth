@@ -19,7 +19,7 @@ from conda_auth.handlers.token import (
 @pytest.fixture(autouse=True)
 def clean_up_manager_cache():
     """Makes sure the manager cache gets emptied after each test run"""
-    manager._cache = {}
+    manager.cache_clear()
 
 
 @pytest.mark.parametrize(

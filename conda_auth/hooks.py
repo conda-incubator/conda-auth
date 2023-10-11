@@ -47,7 +47,5 @@ def conda_auth_handlers():
     """
     Registers auth handlers
     """
-    yield CondaAuthHandler(
-        name=f"{PLUGIN_NAME}-{HTTP_BASIC_AUTH_NAME}", handler=BasicAuthHandler
-    )
-    yield CondaAuthHandler(name=f"{PLUGIN_NAME}-{TOKEN_NAME}", handler=TokenAuthHandler)
+    yield CondaAuthHandler(name=HTTP_BASIC_AUTH_NAME, handler=BasicAuthHandler)
+    yield CondaAuthHandler(name=TOKEN_NAME, handler=TokenAuthHandler)

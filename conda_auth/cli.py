@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import MutableMapping
 
 import click
@@ -15,6 +16,7 @@ from .handlers import (
     HTTP_BASIC_AUTH_NAME,
     TOKEN_NAME,
 )
+from .options import MutuallyExclusiveOption
 
 # Constants
 AUTH_MANAGER_MAPPING = {
@@ -29,6 +31,8 @@ SUCCESSFUL_LOGOUT_MESSAGE = "Successfully removed credentials"
 SUCCESSFUL_COLOR = "green"
 
 VALID_AUTH_CHOICES = tuple(AUTH_MANAGER_MAPPING.keys())
+
+OPTION_DEFAULT = "CONDA_AUTH_DEFAULT"
 
 
 def parse_channel(ctx, param, value):
@@ -50,14 +54,18 @@ def get_auth_manager(options) -> tuple[str, AuthManager]:
             raise CondaAuthError(
                 f'Invalid authentication type. Valid types are: "{", ".join(VALID_AUTH_CHOICES)}"'
             )
+        return auth_type, auth_manager
 
     # we use http basic auth when "username" or "password" are present
-    elif options.get("username") is not None or options.get("password") is not None:
+    if (
+        "username" in option_tracker.options_used
+        or "password" in option_tracker.options_used
+    ):
         auth_manager = basic_auth_manager
         auth_type = HTTP_BASIC_AUTH_NAME
 
     # we use token auth when "token" is present
-    elif options.get("token") is not None:
+    elif "token" in option_tracker.options_used:
         auth_manager = token_auth_manager
         auth_type = TOKEN_NAME
 
@@ -90,30 +98,66 @@ def auth_wrapper(args):
     group(args=args, prog_name="conda auth", standalone_mode=True)
 
 
+class OptionTracker:
+    """
+    Used to track whether the option was actually provided when command
+    was issued
+    """
+
+    def __init__(self):
+        self.options_used = set()
+
+    def track_callback(self, ctx, param, value):
+        """
+        Callback used to see if the option was provided
+
+        This is also converts the ``OPTION_DEFAULT`` value to ``None``
+        """
+        for opt in param.opts:
+            if opt in sys.argv:
+                self.options_used.add(param.name)
+                break
+
+        value = value if value != OPTION_DEFAULT else None
+
+        return value
+
+
+option_tracker = OptionTracker()
+
+
 @group.command("login")
 @click.option(
     "-u",
     "--username",
     help="Username to use for private channels using HTTP Basic Authentication",
+    cls=MutuallyExclusiveOption,
+    is_flag=False,
+    flag_value=OPTION_DEFAULT,
+    mutually_exclusive=("token",),
+    callback=option_tracker.track_callback,
 )
 @click.option(
     "-p",
     "--password",
     help="Password to use for private channels using HTTP Basic Authentication",
+    cls=MutuallyExclusiveOption,
+    mutually_exclusive=("token",),
+    callback=option_tracker.track_callback,
 )
 @click.option(
     "-t",
     "--token",
     help="Token to use for private channels using an API token",
-)
-@click.option(
-    "-a",
-    "--auth",
-    help="Specify the authentication type you would like to use",
-    type=click.Choice(VALID_AUTH_CHOICES),
+    is_flag=False,
+    flag_value=OPTION_DEFAULT,
+    cls=MutuallyExclusiveOption,
+    mutually_exclusive=("username", "password"),
+    callback=option_tracker.track_callback,
 )
 @click.argument("channel", callback=parse_channel)
-def login(channel: Channel, **kwargs):
+@click.pass_context
+def login(ctx, channel: Channel, **kwargs):
     """
     Log in to a channel by storing the credentials or tokens associated with it
     """
@@ -122,14 +166,15 @@ def login(channel: Channel, **kwargs):
     settings.update(kwargs)
 
     auth_type, auth_manager = get_auth_manager(settings)
-
-    username = auth_manager.store(channel, settings)
+    username: str | None = auth_manager.store(channel, settings)
 
     click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg=SUCCESSFUL_COLOR))
 
     try:
         condarc = CondaRC()
-        condarc.update_channel_settings(channel.canonical_name, username, auth_type)
+        if auth_type == TOKEN_NAME:
+            username = None
+        condarc.update_channel_settings(channel.canonical_name, auth_type, username)
         condarc.save()
     except CondaRCError as exc:
         raise CondaAuthError(str(exc))
@@ -146,7 +191,6 @@ def logout(channel: Channel):
     if settings is None:
         raise CondaAuthError("Unable to find information about logged in session.")
 
-    settings["type"] = settings["auth"]
     auth_type, auth_manager = get_auth_manager(settings)
     auth_manager.remove_secret(channel, settings)
 

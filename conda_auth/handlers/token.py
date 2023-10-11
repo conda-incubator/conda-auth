@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from conda.base.context import context
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
@@ -31,8 +30,8 @@ Name used to refer to this authentication handler in configuration
 
 
 class TokenAuthManager(AuthManager):
-    def get_keyring_id(self, channel_name: str) -> str:
-        return f"{PLUGIN_NAME}::{TOKEN_NAME}::{channel_name}"
+    def get_keyring_id(self, channel: Channel) -> str:
+        return f"{PLUGIN_NAME}::{TOKEN_NAME}::{channel.canonical_name}"
 
     def _fetch_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
@@ -41,7 +40,7 @@ class TokenAuthManager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for secret.
         """
-        keyring_id = self.get_keyring_id(channel.canonical_name)
+        keyring_id = self.get_keyring_id(channel)
         token = storage.get_password(keyring_id, USERNAME)
 
         if token is None:
@@ -52,7 +51,7 @@ class TokenAuthManager(AuthManager):
     def remove_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
     ) -> None:
-        keyring_id = self.get_keyring_id(channel.canonical_name)
+        keyring_id = self.get_keyring_id(channel)
 
         storage.delete_password(keyring_id, USERNAME)
 
@@ -83,7 +82,7 @@ class TokenAuthManager(AuthManager):
         return TokenAuthHandler
 
 
-manager = TokenAuthManager(context)
+manager = TokenAuthManager()
 
 
 def is_anaconda_dot_org(channel_name: str) -> bool:

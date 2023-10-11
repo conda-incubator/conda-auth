@@ -7,7 +7,6 @@ from getpass import getpass
 from collections.abc import Mapping
 
 from requests.auth import _basic_auth_str  # type: ignore
-from conda.base.context import context
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
@@ -33,8 +32,8 @@ Name used to refer to this authentication handler in configuration
 
 
 class BasicAuthManager(AuthManager):
-    def get_keyring_id(self, channel_name: str):
-        return f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel_name}"
+    def get_keyring_id(self, channel: Channel):
+        return f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel.canonical_name}"
 
     def _fetch_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
@@ -51,7 +50,7 @@ class BasicAuthManager(AuthManager):
     def remove_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
     ) -> None:
-        keyring_id = self.get_keyring_id(channel.canonical_name)
+        keyring_id = self.get_keyring_id(channel)
         username = self.get_username(settings, channel)
 
         storage.delete_password(keyring_id, username)
@@ -92,7 +91,7 @@ class BasicAuthManager(AuthManager):
         """
         Attempts to get password and falls back to prompting the user for it if not found.
         """
-        keyring_id = self.get_keyring_id(channel.canonical_name)
+        keyring_id = self.get_keyring_id(channel)
         password = storage.get_password(keyring_id, username)
 
         if password is None:
@@ -106,7 +105,7 @@ class BasicAuthManager(AuthManager):
         return BasicAuthHandler
 
 
-manager = BasicAuthManager(context)
+manager = BasicAuthManager()
 
 
 class BasicAuthHandler(ChannelAuthBase):
