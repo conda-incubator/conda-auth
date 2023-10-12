@@ -31,20 +31,6 @@ def keyring(mocker):
 
 
 @pytest.fixture
-def getpass(mocker):
-    """
-    Used to return a factor function to configure the value that getpass returns
-    """
-
-    def _getpass(secret):
-        getpass_mock = mocker.patch("conda_auth.handlers.basic_auth.getpass")
-        getpass_mock.return_value = secret
-        return getpass_mock
-
-    return _getpass
-
-
-@pytest.fixture
 def runner():
     """
     CLI test runner used for all tests

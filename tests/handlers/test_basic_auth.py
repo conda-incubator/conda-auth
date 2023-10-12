@@ -22,7 +22,7 @@ def clean_up_manager_cache():
     manager.cache_clear()
 
 
-def test_basic_auth_manager_no_previous_secret(keyring, getpass):
+def test_basic_auth_manager_no_previous_secret(keyring):
     """
     Test to make sure when there is no password set, we are able to set a new
     password via the ``getpass`` function.
@@ -40,7 +40,7 @@ def test_basic_auth_manager_no_previous_secret(keyring, getpass):
         manager.store(channel, settings)
 
 
-def test_basic_auth_manager_no_secret_or_username(mocker, keyring, getpass):
+def test_basic_auth_manager_no_secret_or_username(keyring):
     """
     Test to make sure when there is no password or username set, we raise the correct
     exception.
@@ -56,7 +56,7 @@ def test_basic_auth_manager_no_secret_or_username(mocker, keyring, getpass):
         manager.store(channel, settings)
 
 
-def test_basic_auth_manager_with_previous_secret(keyring, getpass):
+def test_basic_auth_manager_with_previous_secret(keyring):
     """
     Test to make sure when there is a password set, we retrieve it and set the
     cache object appropriately.
@@ -68,7 +68,6 @@ def test_basic_auth_manager_with_previous_secret(keyring, getpass):
     channel = Channel("tester")
 
     # setup mocks
-    getpass_mock = getpass(secret)
     keyring(secret)
 
     # run code under test
@@ -76,10 +75,9 @@ def test_basic_auth_manager_with_previous_secret(keyring, getpass):
 
     # make assertions
     assert manager._cache == {channel.canonical_name: ("admin", secret)}
-    getpass_mock.assert_not_called()
 
 
-def test_basic_auth_manager_cache_exists(keyring, getpass):
+def test_basic_auth_manager_cache_exists(keyring):
     """
     Test to make sure that everything works as expected when a cache entry
     already exists for a credential set.
@@ -93,7 +91,6 @@ def test_basic_auth_manager_cache_exists(keyring, getpass):
     manager._cache = {channel.canonical_name: (username, secret)}
 
     # setup mocks
-    getpass_mock = getpass(secret)
     keyring_mock = keyring(secret)
 
     # run code under test
@@ -101,7 +98,6 @@ def test_basic_auth_manager_cache_exists(keyring, getpass):
 
     # make assertions
     assert manager._cache == {channel.canonical_name: (username, secret)}
-    getpass_mock.assert_not_called()
     keyring_mock.basic.get_password.assert_not_called()
 
 
@@ -125,7 +121,7 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
     keyring_mocks.basic.delete_password.assert_called_once()
 
 
-def test_basic_auth_manager_remove_existing_secret_no_username(mocker, keyring):
+def test_basic_auth_manager_remove_existing_secret_no_username(keyring):
     """
     Test to make sure that when removing a password that exist it fails when no username is present
     """

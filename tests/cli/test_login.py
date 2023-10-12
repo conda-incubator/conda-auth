@@ -17,8 +17,6 @@ def test_login_no_options_basic_auth(mocker, runner, keyring, condarc):
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": "user"}
     ]
-    mock_getpass = mocker.patch("conda_auth.handlers.basic_auth.getpass")
-    mock_getpass.return_value = secret
 
     # run command
     result = runner.invoke(group, ["login", channel_name])
@@ -74,13 +72,10 @@ def test_login_with_non_existent_channel(mocker, runner, keyring, condarc):
     Runs the login command for a channel that is not present in the settings file
     """
     channel_name = "tester"
-    secret = "password"
 
     # setup mocks
     mock_context = mocker.patch("conda_auth.cli.context")
     mock_context.channel_settings = []
-    mock_getpass = mocker.patch("conda_auth.handlers.basic_auth.getpass")
-    mock_getpass.return_value = secret
     keyring(None)
 
     # run command
@@ -98,13 +93,10 @@ def test_login_succeeds_error_returned_when_updating_condarc(
     the condarc file.
     """
     channel_name = "tester"
-    secret = "password"
 
     # setup mocks
     mock_context = mocker.patch("conda_auth.cli.context")
     mock_context.channel_settings = []
-    mock_getpass = mocker.patch("conda_auth.handlers.basic_auth.getpass")
-    mock_getpass.return_value = secret
     keyring(None)
     condarc().save.side_effect = CondaRCError("Could not save file")
 
