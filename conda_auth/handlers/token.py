@@ -73,15 +73,9 @@ class TokenAuthManager(AuthManager):
         token = settings.get(TOKEN_PARAM_NAME)
 
         if token is None:
-            token = self.prompt_token()
+            raise CondaAuthError("Token not found")
 
         return token
-
-    def prompt_token(self) -> str:
-        """
-        This can be overriden for classes that do not want to use the built-in function ``input``.
-        """
-        return input("Token: ")
 
     def get_auth_class(self) -> type:
         return TokenAuthHandler

@@ -27,46 +27,33 @@ def test_basic_auth_manager_no_previous_secret(keyring, getpass):
     Test to make sure when there is no password set, we are able to set a new
     password via the ``getpass`` function.
     """
-    secret = "secret"
     settings = {
         "username": "admin",
     }
     channel = Channel("tester")
 
     # setup mocks
-    getpass_mock = getpass(secret)
     keyring(None)
 
     # run code under test
-    manager.store(channel, settings)
-
-    # make assertions
-    assert manager._cache == {channel.canonical_name: ("admin", secret)}
-    getpass_mock.assert_called_once()
+    with pytest.raises(CondaAuthError, match="Password not found"):
+        manager.store(channel, settings)
 
 
 def test_basic_auth_manager_no_secret_or_username(mocker, keyring, getpass):
     """
-    Test to make sure when there is no password or username set, we are able to provide a
-    password via the ``getpass`` function and a username via the ``input`` function.
+    Test to make sure when there is no password or username set, we raise the correct
+    exception.
     """
-    username = "admin"
-    secret = "secret"
     settings = {}
     channel = Channel("tester")
 
     # setup mocks
-    input_mock = mocker.patch("conda_auth.handlers.basic_auth.input")
-    input_mock.return_value = username
-    getpass_mock = getpass(secret)
     keyring(None)
 
     # run code under test
-    manager.store(channel, settings)
-
-    # make assertions
-    assert manager._cache == {channel.canonical_name: (username, secret)}
-    getpass_mock.assert_called_once()
+    with pytest.raises(CondaAuthError, match="Username not found"):
+        manager.store(channel, settings)
 
 
 def test_basic_auth_manager_with_previous_secret(keyring, getpass):
@@ -140,25 +127,18 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
 
 def test_basic_auth_manager_remove_existing_secret_no_username(mocker, keyring):
     """
-    Test to make sure that removing a password that exist works when no username
-    is present in the settings file.
+    Test to make sure that when removing a password that exist it fails when no username is present
     """
     secret = "secret"
-    username = "username"
     settings = {}
     channel = Channel("tester")
 
     # setup mocks
-    keyring_mocks = keyring(secret)
-    input_mock = mocker.patch("conda_auth.handlers.basic_auth.input")
-    input_mock.return_value = username
+    keyring(secret)
 
     # run code under test
-    manager.remove_secret(channel, settings)
-
-    # make assertions
-    input_mock.assert_called_once()
-    keyring_mocks.basic.delete_password.assert_called_once()
+    with pytest.raises(CondaAuthError, match="Username not found"):
+        manager.remove_secret(channel, settings)
 
 
 def test_basic_auth_manager_remove_non_existing_secret(keyring):

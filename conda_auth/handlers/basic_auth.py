@@ -3,7 +3,6 @@ Basic auth implementation for the conda auth handler plugin hook
 """
 from __future__ import annotations
 
-from getpass import getpass
 from collections.abc import Mapping
 
 import keyring
@@ -44,7 +43,7 @@ class BasicAuthManager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for the credentials.
         """
-        username = self.get_username(settings, channel)
+        username = self.get_username(settings)
         password = self.get_password(username, settings, channel)
 
         return username, password
@@ -53,7 +52,7 @@ class BasicAuthManager(AuthManager):
         self, channel: Channel, settings: Mapping[str, str | None]
     ) -> None:
         keyring_id = self.get_keyring_id(channel)
-        username = self.get_username(settings, channel)
+        username = self.get_username(settings)
 
         try:
             keyring.delete_password(keyring_id, username)
@@ -66,27 +65,14 @@ class BasicAuthManager(AuthManager):
     def get_config_parameters(self) -> tuple[str, ...]:
         return USERNAME_PARAM_NAME, PASSWORD_PARAM_NAME
 
-    def prompt_password(self) -> str:
-        """
-        This can be overriden for classes that do not want to use the ``getpass`` module.
-        """
-        return getpass()
-
-    def prompt_username(self, channel: Channel) -> str:
-        """
-        This can be overriden for classes that do not want to use the built-in function ``input``.
-        """
-        print(f"Please provide credentials for channel: {channel.canonical_name}")
-        return input("Username: ")
-
-    def get_username(self, settings: Mapping[str, str | None], channel: Channel):
+    def get_username(self, settings: Mapping[str, str | None]):
         """
         Attempts to find username in settings and falls back to prompting user for it if not found.
         """
         username = settings.get(USERNAME_PARAM_NAME)
 
         if username is None:
-            username = self.prompt_username(channel)
+            raise CondaAuthError("Username not found")
 
         return username
 
@@ -102,7 +88,7 @@ class BasicAuthManager(AuthManager):
         if password is None:
             password = settings.get(PASSWORD_PARAM_NAME)
             if password is None:
-                password = self.prompt_password()
+                raise CondaAuthError("Password not found")
 
         return password
 

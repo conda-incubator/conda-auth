@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import MutableMapping
 
 import click
@@ -16,7 +15,7 @@ from .handlers import (
     HTTP_BASIC_AUTH_NAME,
     TOKEN_NAME,
 )
-from .options import MutuallyExclusiveOption
+from .options import CustomOption
 
 # Constants
 AUTH_MANAGER_MAPPING = {
@@ -42,7 +41,16 @@ def parse_channel(ctx, param, value):
     return Channel(value)
 
 
-def get_auth_manager(options) -> tuple[str, AuthManager]:
+class ExtraContext:
+    """
+    Used to provide more information about the running environment
+    """
+
+    def __init__(self):
+        self.used_options = set()
+
+
+def get_auth_manager(options, extra_context: ExtraContext) -> tuple[str, AuthManager]:
     """
     Based on CLI options provided, return the correct auth manager to use.
     """
@@ -58,14 +66,14 @@ def get_auth_manager(options) -> tuple[str, AuthManager]:
 
     # we use http basic auth when "username" or "password" are present
     if (
-        "username" in option_tracker.options_used
-        or "password" in option_tracker.options_used
+        "username" in extra_context.used_options
+        or "password" in extra_context.used_options
     ):
         auth_manager = basic_auth_manager
         auth_type = HTTP_BASIC_AUTH_NAME
 
     # we use token auth when "token" is present
-    elif "token" in option_tracker.options_used:
+    elif "token" in extra_context.used_options:
         auth_manager = token_auth_manager
         auth_type = TOKEN_NAME
 
@@ -87,10 +95,12 @@ def get_channel_settings(channel: str) -> MutableMapping[str, str] | None:
 
 
 @click.group("auth")
-def group():
+@click.pass_context
+def group(ctx):
     """
     Commands for handling authentication within conda
     """
+    ctx.obj = ExtraContext()
 
 
 def auth_wrapper(args):
@@ -98,66 +108,38 @@ def auth_wrapper(args):
     group(args=args, prog_name="conda auth", standalone_mode=True)
 
 
-class OptionTracker:
-    """
-    Used to track whether the option was actually provided when command
-    was issued
-    """
-
-    def __init__(self):
-        self.options_used = set()
-
-    def track_callback(self, ctx, param, value):
-        """
-        Callback used to see if the option was provided
-
-        This is also converts the ``OPTION_DEFAULT`` value to ``None``
-        """
-        for opt in param.opts:
-            if opt in sys.argv:
-                self.options_used.add(param.name)
-                break
-
-        value = value if value != OPTION_DEFAULT else None
-
-        return value
-
-
-option_tracker = OptionTracker()
-
-
 @group.command("login")
 @click.option(
     "-u",
     "--username",
     help="Username to use for private channels using HTTP Basic Authentication",
-    cls=MutuallyExclusiveOption,
-    is_flag=False,
-    flag_value=OPTION_DEFAULT,
+    cls=CustomOption,
+    prompt=True,
+    prompt_required=False,
     mutually_exclusive=("token",),
-    callback=option_tracker.track_callback,
 )
 @click.option(
     "-p",
     "--password",
     help="Password to use for private channels using HTTP Basic Authentication",
-    cls=MutuallyExclusiveOption,
+    cls=CustomOption,
+    prompt=True,
+    hide_input=True,
     mutually_exclusive=("token",),
-    callback=option_tracker.track_callback,
+    prompt_when="username",
 )
 @click.option(
     "-t",
     "--token",
     help="Token to use for private channels using an API token",
-    is_flag=False,
-    flag_value=OPTION_DEFAULT,
-    cls=MutuallyExclusiveOption,
+    prompt=True,
+    prompt_required=False,
+    cls=CustomOption,
     mutually_exclusive=("username", "password"),
-    callback=option_tracker.track_callback,
 )
 @click.argument("channel", callback=parse_channel)
-@click.pass_context
-def login(ctx, channel: Channel, **kwargs):
+@click.pass_obj
+def login(extra_context: ExtraContext, channel: Channel, **kwargs):
     """
     Log in to a channel by storing the credentials or tokens associated with it
     """
@@ -165,7 +147,7 @@ def login(ctx, channel: Channel, **kwargs):
     settings = get_channel_settings(channel.canonical_name) or {}
     settings.update(kwargs)
 
-    auth_type, auth_manager = get_auth_manager(settings)
+    auth_type, auth_manager = get_auth_manager(settings, extra_context)
     username: str | None = auth_manager.store(channel, settings)
 
     click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg=SUCCESSFUL_COLOR))
@@ -182,7 +164,8 @@ def login(ctx, channel: Channel, **kwargs):
 
 @group.command("logout")
 @click.argument("channel", callback=parse_channel)
-def logout(channel: Channel):
+@click.pass_obj
+def logout(extra_context: ExtraContext, channel: Channel):
     """
     Log out of a by removing any credentials or tokens associated with it.
     """
@@ -191,7 +174,7 @@ def logout(channel: Channel):
     if settings is None:
         raise CondaAuthError("Unable to find information about logged in session.")
 
-    auth_type, auth_manager = get_auth_manager(settings)
+    auth_type, auth_manager = get_auth_manager(settings, extra_context)
     auth_manager.remove_secret(channel, settings)
 
     click.echo(click.style(SUCCESSFUL_LOGOUT_MESSAGE, fg=SUCCESSFUL_COLOR))
