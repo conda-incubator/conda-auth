@@ -16,17 +16,17 @@ from ..constants import LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
 from ..exceptions import CondaAuthError
 from .base import AuthManager
 
-USERNAME_PARAM_NAME = "username"
+USERNAME_PARAM_NAME: str = "username"
 """
 Name of the configuration parameter where username information is stored
 """
 
-PASSWORD_PARAM_NAME = "password"
+PASSWORD_PARAM_NAME: str = "password"
 """
 Name of the configuration parameter where password information is stored
 """
 
-HTTP_BASIC_AUTH_NAME = "http-basic"
+HTTP_BASIC_AUTH_NAME: str = "http-basic"
 """
 Name used to refer to this authentication handler in configuration
 """
@@ -82,11 +82,14 @@ class BasicAuthManager(AuthManager):
         """
         Attempts to get password and falls back to prompting the user for it if not found.
         """
-        keyring_id = self.get_keyring_id(channel)
-        password = keyring.get_password(keyring_id, username)
+        # First see if a value has been passed in
+        password = settings.get(PASSWORD_PARAM_NAME)
 
+        # Now try retrieving it from the password manager
         if password is None:
-            password = settings.get(PASSWORD_PARAM_NAME)
+            keyring_id = self.get_keyring_id(channel)
+            password = keyring.get_password(keyring_id, username)
+
             if password is None:
                 raise CondaAuthError("Password not found")
 

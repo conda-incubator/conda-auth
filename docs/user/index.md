@@ -15,12 +15,12 @@ conda install -c conda-forge conda-auth
 Once installed the plugin makes two new commands available: `conda auth login` and `conda auth logout`. The plugin
 supports various types of authentication schemes. Read below to learn how to use each.
 
-### Logging in to a channel using HTTP basic authentication
+### HTTP basic authentication
 
 To log in to a channel using HTTP basic authentication, run the following command:
 
 ```
-conda auth login <channel_name>
+conda auth login <channel_name> --basic
 ```
 
 Once this has been run, you will be prompted for your username and password.
@@ -28,7 +28,30 @@ Once this has been run, you will be prompted for your username and password.
 You also have the ability to specify username and password as command options:
 
 ```
-conda auth login <chanel_name> --username $USERNAME --password $PASSWORD
+conda auth login <chanel_name> --basic --username $USERNAME --password $PASSWORD
+```
+
+### Token authentication
+
+The following examples are for authenticating with channels using token based authentication.
+
+For [anaconda.org](https://anaconda.org) channels:
+
+```
+conda auth login <channel_name> --token
+```
+
+You will then be prompted for your token. Optionally, you can specify the token value as
+an option:
+
+```
+conda auth login <channel_name> --token <token_value>
+```
+
+For other channels not hosted at anaconda.org, use the full URL of the channel:
+
+```
+conda auth login https://example.com/my-protected-channel --token
 ```
 
 ### Logging out of a channel

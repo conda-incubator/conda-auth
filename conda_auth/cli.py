@@ -29,6 +29,8 @@ SUCCESSFUL_LOGOUT_MESSAGE = "Successfully removed credentials"
 
 SUCCESSFUL_COLOR = "green"
 
+FAILURE_COLOR = "red"
+
 VALID_AUTH_CHOICES = tuple(AUTH_MANAGER_MAPPING.keys())
 
 OPTION_DEFAULT = "CONDA_AUTH_DEFAULT"
@@ -65,10 +67,7 @@ def get_auth_manager(options, extra_context: ExtraContext) -> tuple[str, AuthMan
         return auth_type, auth_manager
 
     # we use http basic auth when "username" or "password" are present
-    if (
-        "username" in extra_context.used_options
-        or "password" in extra_context.used_options
-    ):
+    if "basic" in extra_context.used_options:
         auth_manager = basic_auth_manager
         auth_type = HTTP_BASIC_AUTH_NAME
 
@@ -77,10 +76,15 @@ def get_auth_manager(options, extra_context: ExtraContext) -> tuple[str, AuthMan
         auth_manager = token_auth_manager
         auth_type = TOKEN_NAME
 
-    # default authentication handler
+    # raise error if authentication type not found
     else:
-        auth_manager = basic_auth_manager
-        auth_type = HTTP_BASIC_AUTH_NAME
+        raise CondaAuthError(
+            click.style(
+                "Please specify an authentication type to use"
+                " with either the `--basic` or `--token` options.",
+                fg=FAILURE_COLOR,
+            )
+        )
 
     return auth_type, auth_manager
 
@@ -109,14 +113,15 @@ def auth_wrapper(args):
 
 
 @group.command("login")
+@click.argument("channel", callback=parse_channel)
 @click.option(
     "-u",
     "--username",
     help="Username to use for private channels using HTTP Basic Authentication",
     cls=CustomOption,
     prompt=True,
-    prompt_required=False,
     mutually_exclusive=("token",),
+    prompt_when="basic",
 )
 @click.option(
     "-p",
@@ -126,7 +131,7 @@ def auth_wrapper(args):
     prompt=True,
     hide_input=True,
     mutually_exclusive=("token",),
-    prompt_when="username",
+    prompt_when="basic",
 )
 @click.option(
     "-t",
@@ -137,15 +142,19 @@ def auth_wrapper(args):
     cls=CustomOption,
     mutually_exclusive=("username", "password"),
 )
-@click.argument("channel", callback=parse_channel)
+@click.option(
+    "-b",
+    "--basic",
+    is_flag=True,
+    cls=CustomOption,
+    help="Save login credentials as HTTP basic authentication",
+)
 @click.pass_obj
 def login(extra_context: ExtraContext, channel: Channel, **kwargs):
     """
     Log in to a channel by storing the credentials or tokens associated with it
     """
-    kwargs = {key: val for key, val in kwargs.items() if val is not None}
-    settings = get_channel_settings(channel.canonical_name) or {}
-    settings.update(kwargs)
+    settings = {key: val for key, val in kwargs.items() if val is not None}
 
     auth_type, auth_manager = get_auth_manager(settings, extra_context)
     username: str | None = auth_manager.store(channel, settings)

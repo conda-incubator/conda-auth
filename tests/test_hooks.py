@@ -1,3 +1,5 @@
+from conda.cli.conda_argparse import BUILTIN_COMMANDS
+
 from conda_auth import hooks
 from conda_auth.constants import PLUGIN_NAME
 from conda_auth.handlers import (
@@ -24,7 +26,7 @@ def test_conda_pre_commands_hook():
     """
     objs = list(hooks.conda_pre_commands())
 
-    run_for = {"search", "install", "update", "notices", "create", "search"}
+    run_for = BUILTIN_COMMANDS.union(hooks.ENV_COMMANDS)
 
     assert objs[0].name == f"{PLUGIN_NAME}-{HTTP_BASIC_AUTH_NAME}"
     assert objs[0].run_for == run_for
