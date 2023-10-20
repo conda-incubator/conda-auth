@@ -176,7 +176,7 @@ def login(extra_context: ExtraContext, channel: Channel, **kwargs):
 @click.pass_obj
 def logout(extra_context: ExtraContext, channel: Channel):
     """
-    Log out of a by removing any credentials or tokens associated with it.
+    Log out of a channel by removing any credentials or tokens associated with it.
     """
     settings = get_channel_settings(channel.canonical_name)
 
