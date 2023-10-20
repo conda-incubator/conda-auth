@@ -1,6 +1,6 @@
 import pytest
 
-from conda_auth.cli import auth_wrapper
+from conda_auth.cli import auth
 
 
 def test_auth_wrapper():
@@ -11,4 +11,4 @@ def test_auth_wrapper():
     exception.
     """
     with pytest.raises(SystemExit):
-        auth_wrapper([])
+        auth([])
