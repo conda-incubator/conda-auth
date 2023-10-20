@@ -100,19 +100,14 @@ def get_channel_settings(channel: str) -> MutableMapping[str, str] | None:
 
 @click.group("auth")
 @click.pass_context
-def group(ctx):
+def auth(ctx):
     """
     Commands for handling authentication within conda
     """
     ctx.obj = ExtraContext()
 
 
-def auth_wrapper(args):
-    """Authentication commands for conda"""
-    group(args=args, prog_name="conda auth", standalone_mode=True)
-
-
-@group.command("login")
+@auth.command("login")
 @click.argument("channel", callback=parse_channel)
 @click.option(
     "-u",
@@ -171,7 +166,7 @@ def login(extra_context: ExtraContext, channel: Channel, **kwargs):
         raise CondaAuthError(str(exc))
 
 
-@group.command("logout")
+@auth.command("logout")
 @click.argument("channel", callback=parse_channel)
 @click.pass_obj
 def logout(extra_context: ExtraContext, channel: Channel):

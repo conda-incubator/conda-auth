@@ -12,7 +12,7 @@ from .handlers import (
     HTTP_BASIC_AUTH_NAME,
     TOKEN_NAME,
 )
-from .cli import auth_wrapper
+from .cli import auth
 from .constants import PLUGIN_NAME
 
 ENV_COMMANDS = {
@@ -31,7 +31,9 @@ def conda_subcommands():
     Registers subcommands
     """
     yield CondaSubcommand(
-        name="auth", action=auth_wrapper, summary="Authentication commands for conda"
+        name="auth",
+        action=lambda args: auth(prog_name="conda auth", args=args),
+        summary="Authentication commands for conda",
     )
 
 
