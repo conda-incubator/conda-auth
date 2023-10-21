@@ -3,29 +3,38 @@ Basic auth implementation for the conda auth handler plugin hook
 """
 from __future__ import annotations
 
-from getpass import getpass
 from collections.abc import Mapping
 
 import keyring
 from keyring.errors import PasswordDeleteError
 from requests.auth import _basic_auth_str  # type: ignore
-from conda.base.context import context
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import HTTP_BASIC_AUTH_NAME, LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
+from ..constants import LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
 from ..exceptions import CondaAuthError
 from .base import AuthManager
 
-USERNAME_PARAM_NAME = "username"
+USERNAME_PARAM_NAME: str = "username"
+"""
+Name of the configuration parameter where username information is stored
+"""
 
-PASSWORD_PARAM_NAME = "password"
+PASSWORD_PARAM_NAME: str = "password"
+"""
+Name of the configuration parameter where password information is stored
+"""
+
+HTTP_BASIC_AUTH_NAME: str = "http-basic"
+"""
+Name used to refer to this authentication handler in configuration
+"""
 
 
 class BasicAuthManager(AuthManager):
-    def get_keyring_id(self, channel_name: str):
-        return f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel_name}"
+    def get_keyring_id(self, channel: Channel):
+        return f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel.canonical_name}"
 
     def _fetch_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
@@ -34,7 +43,7 @@ class BasicAuthManager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for the credentials.
         """
-        username = self.get_username(settings, channel)
+        username = self.get_username(settings)
         password = self.get_password(username, settings, channel)
 
         return username, password
@@ -42,8 +51,8 @@ class BasicAuthManager(AuthManager):
     def remove_secret(
         self, channel: Channel, settings: Mapping[str, str | None]
     ) -> None:
-        keyring_id = self.get_keyring_id(channel.canonical_name)
-        username = self.get_username(settings, channel)
+        keyring_id = self.get_keyring_id(channel)
+        username = self.get_username(settings)
 
         try:
             keyring.delete_password(keyring_id, username)
@@ -56,27 +65,14 @@ class BasicAuthManager(AuthManager):
     def get_config_parameters(self) -> tuple[str, ...]:
         return USERNAME_PARAM_NAME, PASSWORD_PARAM_NAME
 
-    def prompt_password(self) -> str:
-        """
-        This can be overriden for classes that do not want to use the ``getpass`` module.
-        """
-        return getpass()
-
-    def prompt_username(self, channel: Channel) -> str:
-        """
-        This can be overriden for classes that do not want to use the built-in function ``input``.
-        """
-        print(f"Please provide credentials for channel: {channel.canonical_name}")
-        return input("Username: ")
-
-    def get_username(self, settings: Mapping[str, str | None], channel: Channel):
+    def get_username(self, settings: Mapping[str, str | None]):
         """
         Attempts to find username in settings and falls back to prompting user for it if not found.
         """
         username = settings.get(USERNAME_PARAM_NAME)
 
         if username is None:
-            username = self.prompt_username(channel)
+            raise CondaAuthError("Username not found")
 
         return username
 
@@ -86,13 +82,16 @@ class BasicAuthManager(AuthManager):
         """
         Attempts to get password and falls back to prompting the user for it if not found.
         """
-        keyring_id = self.get_keyring_id(channel.canonical_name)
-        password = keyring.get_password(keyring_id, username)
+        # First see if a value has been passed in
+        password = settings.get(PASSWORD_PARAM_NAME)
 
+        # Now try retrieving it from the password manager
         if password is None:
-            password = settings.get(PASSWORD_PARAM_NAME)
+            keyring_id = self.get_keyring_id(channel)
+            password = keyring.get_password(keyring_id, username)
+
             if password is None:
-                password = self.prompt_password()
+                raise CondaAuthError("Password not found")
 
         return password
 
@@ -100,7 +99,7 @@ class BasicAuthManager(AuthManager):
         return BasicAuthHandler
 
 
-manager = BasicAuthManager(context)
+manager = BasicAuthManager()
 
 
 class BasicAuthHandler(ChannelAuthBase):

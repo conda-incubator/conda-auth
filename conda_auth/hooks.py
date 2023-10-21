@@ -1,13 +1,28 @@
 """
 A place to register plugin hooks
 """
+from conda.cli.conda_argparse import BUILTIN_COMMANDS
 from conda.plugins import CondaAuthHandler, CondaPreCommand, CondaSubcommand, hookimpl
 
-from .handlers import OAuth2Handler, BasicAuthHandler
-from .handlers.oauth2 import manager as oauth2_manager
-from .handlers.basic_auth import manager as basic_auth_manager
-from .constants import OAUTH2_NAME, HTTP_BASIC_AUTH_NAME
+from .handlers import (
+    basic_auth_manager,
+    token_auth_manager,
+    BasicAuthHandler,
+    TokenAuthHandler,
+    HTTP_BASIC_AUTH_NAME,
+    TOKEN_NAME,
+)
 from .cli import auth_wrapper
+from .constants import PLUGIN_NAME
+
+ENV_COMMANDS = {
+    "env_config",
+    "env_create",
+    "env_export",
+    "env_list",
+    "env_remove",
+    "env_update",
+}
 
 
 @hookimpl
@@ -26,14 +41,14 @@ def conda_pre_commands():
     Registers pre-command hooks
     """
     yield CondaPreCommand(
-        name=f"{HTTP_BASIC_AUTH_NAME}-collect_credentials",
+        name=f"{PLUGIN_NAME}-{HTTP_BASIC_AUTH_NAME}",
         action=basic_auth_manager.hook_action,
-        run_for={"search", "install", "update", "notices", "create", "search"},
+        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS),
     )
     yield CondaPreCommand(
-        name=f"{OAUTH2_NAME}-collect_token",
-        action=oauth2_manager.hook_action,
-        run_for={"search", "install", "update", "notices", "create", "search"},
+        name=f"{PLUGIN_NAME}-{TOKEN_NAME}",
+        action=token_auth_manager.hook_action,
+        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS),
     )
 
 
@@ -43,4 +58,4 @@ def conda_auth_handlers():
     Registers auth handlers
     """
     yield CondaAuthHandler(name=HTTP_BASIC_AUTH_NAME, handler=BasicAuthHandler)
-    yield CondaAuthHandler(name=OAUTH2_NAME, handler=OAuth2Handler)
+    yield CondaAuthHandler(name=TOKEN_NAME, handler=TokenAuthHandler)

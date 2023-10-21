@@ -1,64 +1,54 @@
 from conda_auth.cli import group, SUCCESSFUL_LOGIN_MESSAGE
 from conda_auth.condarc import CondaRCError
-from conda_auth.constants import HTTP_BASIC_AUTH_NAME
-from conda_auth.exceptions import CondaAuthError, InvalidCredentialsError
-from conda_auth.handlers.base import INVALID_CREDENTIALS_ERROR_MESSAGE
+from conda_auth.exceptions import CondaAuthError
 
 
-def test_login_no_options_basic_auth(mocker, runner, session, keyring, condarc):
+def test_login_basic_auth_no_options(runner, keyring, condarc):
     """
     Runs the login command with no additional CLI options defined (e.g. --username)
     """
+    username = "user"
     secret = "password"
     channel_name = "tester"
 
     # setup mocks
-    keyring(secret)
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = [
-        {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": "user"}
-    ]
-    mock_getpass = mocker.patch("conda_auth.handlers.basic_auth.getpass")
-    mock_getpass.return_value = secret
-
-    # run command
-    result = runner.invoke(group, ["login", channel_name])
-
-    assert result.exit_code == 0
-    assert SUCCESSFUL_LOGIN_MESSAGE in result.output
-
-
-def test_login_with_options_basic_auth(mocker, runner, session, keyring, condarc):
-    """
-    Runs the login command with CLI options defined (e.g. --username)
-    """
-    channel_name = "tester"
-
-    # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = []
     keyring(None)
 
     # run command
     result = runner.invoke(
-        group, ["login", channel_name, "--username", "test", "--password", "test"]
+        group, ["login", channel_name, "--basic"], input=f"{username}\n{secret}"
     )
 
     assert result.exit_code == 0
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
-def test_login_with_invalid_auth_type(mocker, runner, session, keyring, condarc):
+def test_login_with_options_basic_auth(runner, keyring, condarc):
+    """
+    Runs the login command with CLI options defined (e.g. --username)
+    """
+    channel_name = "tester"
+
+    # setup mocks
+    keyring(None)
+
+    # run command
+    result = runner.invoke(
+        group,
+        ["login", channel_name, "--basic", "--username", "test", "--password", "test"],
+    )
+
+    assert result.exit_code == 0
+    assert SUCCESSFUL_LOGIN_MESSAGE in result.output
+
+
+def test_login_with_invalid_auth_type(runner, keyring, condarc):
     """
     Runs the login command when there is an invalid auth type configured in settings
     """
     channel_name = "tester"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = [
-        {"channel": channel_name, "auth": "does-not-exist"}
-    ]
     keyring(None)
 
     # run command
@@ -67,76 +57,56 @@ def test_login_with_invalid_auth_type(mocker, runner, session, keyring, condarc)
 
     assert result.exit_code == 1
     assert exc_type == CondaAuthError
-    assert "Invalid authentication type." in exception.message
+    assert "Please specify an authentication type" in exception.message
 
 
-def test_login_with_non_existent_channel(mocker, runner, session, keyring, condarc):
-    """
-    Runs the login command for a channel that is not present in the settings file
-    """
-    channel_name = "tester"
-    secret = "password"
-
-    # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = []
-    mock_getpass = mocker.patch("conda_auth.handlers.basic_auth.getpass")
-    mock_getpass.return_value = secret
-    keyring(None)
-
-    # run command
-    result = runner.invoke(group, ["login", channel_name], input="user")
-
-    assert result.exit_code == 0
-    assert SUCCESSFUL_LOGIN_MESSAGE in result.output
-
-
-def test_login_succeeds_error_returned_when_updating_condarc(
-    mocker, runner, session, keyring, condarc
-):
+def test_login_succeeds_error_returned_when_updating_condarc(runner, keyring, condarc):
     """
     Test the case where the login runs successfully but an error is returned when trying to update
     the condarc file.
     """
     channel_name = "tester"
-    secret = "password"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = []
-    mock_getpass = mocker.patch("conda_auth.handlers.basic_auth.getpass")
-    mock_getpass.return_value = secret
     keyring(None)
     condarc().save.side_effect = CondaRCError("Could not save file")
 
     # run command
-    result = runner.invoke(group, ["login", channel_name], input="user")
+    result = runner.invoke(
+        group, ["login", channel_name, "--basic"], input="user\npassword"
+    )
     exc_type, exception, _ = result.exc_info
 
     assert exc_type == CondaAuthError
     assert "Could not save file" == exception.message
 
 
-def test_login_exceed_max_login_retries(mocker, runner, session, keyring, condarc):
+def test_login_token(mocker, runner, keyring, condarc):
     """
-    Test the case where the login runs successfully but an error is returned when trying to update
-    the condarc file.
+    Test successful login with token
     """
     channel_name = "tester"
 
     # setup mocks
-    mocker.patch("conda_auth.cli.context")
-    mock_manager = mocker.patch("conda_auth.cli.get_auth_manager")
-    mock_type = "http-basic"
-    mock_auth_manager = mocker.MagicMock()
-    mock_auth_manager.authenticate.side_effect = InvalidCredentialsError(
-        INVALID_CREDENTIALS_ERROR_MESSAGE
-    )
-    mock_manager.return_value = (mock_type, mock_auth_manager)
+    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context.channel_settings = []
+    keyring(None)
 
-    # run command
-    result = runner.invoke(group, ["login", channel_name], input="user")
-    exc_type, exception, _ = result.exc_info
+    result = runner.invoke(group, ["login", channel_name, "--token", "token"])
 
-    assert exc_type == CondaAuthError
-    assert "Max attempts reached" in exception.message
+    assert result.exit_code == 0
+
+
+def test_login_token_no_options(runner, keyring, condarc):
+    """
+    Test successful login with token without the value being supplied at the command line
+    """
+    channel_name = "tester"
+
+    # setup mocks
+    keyring(None)
+
+    result = runner.invoke(group, ["login", channel_name, "--token"], input="token\n")
+
+    assert result.exit_code == 0
+    assert SUCCESSFUL_LOGIN_MESSAGE in result.output
