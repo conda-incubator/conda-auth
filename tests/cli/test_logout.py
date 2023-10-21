@@ -1,4 +1,4 @@
-from conda_auth.cli import group, SUCCESSFUL_LOGOUT_MESSAGE
+from conda_auth.cli import auth, SUCCESSFUL_LOGOUT_MESSAGE
 from conda_auth.constants import PLUGIN_NAME
 from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME
 from conda_auth.exceptions import CondaAuthError
@@ -20,7 +20,7 @@ def test_logout_of_active_session(mocker, runner, keyring):
     ]
 
     # run command
-    result = runner.invoke(group, ["logout", channel_name])
+    result = runner.invoke(auth, ["logout", channel_name])
 
     assert SUCCESSFUL_LOGOUT_MESSAGE in result.output
     assert result.exit_code == 0
@@ -43,7 +43,7 @@ def test_logout_of_non_existing_session(mocker, runner, keyring):
     mock_context.channel_settings = []
 
     # run command
-    result = runner.invoke(group, ["logout", channel_name])
+    result = runner.invoke(auth, ["logout", channel_name])
     exc_type, exception, _ = result.exc_info
 
     assert exc_type == CondaAuthError

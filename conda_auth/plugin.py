@@ -1,6 +1,7 @@
 """
 A place to register plugin hooks
 """
+from conda.cli.conda_argparse import BUILTIN_COMMANDS
 from conda.plugins import CondaAuthHandler, CondaPreCommand, CondaSubcommand, hookimpl
 
 from .handlers import (
@@ -11,8 +12,17 @@ from .handlers import (
     HTTP_BASIC_AUTH_NAME,
     TOKEN_NAME,
 )
-from .cli import auth_wrapper
+from .cli import auth
 from .constants import PLUGIN_NAME
+
+ENV_COMMANDS = {
+    "env_config",
+    "env_create",
+    "env_export",
+    "env_list",
+    "env_remove",
+    "env_update",
+}
 
 
 @hookimpl
@@ -21,7 +31,9 @@ def conda_subcommands():
     Registers subcommands
     """
     yield CondaSubcommand(
-        name="auth", action=auth_wrapper, summary="Authentication commands for conda"
+        name="auth",
+        action=lambda args: auth(prog_name="conda auth", args=args),
+        summary="Authentication commands for conda",
     )
 
 
@@ -33,12 +45,12 @@ def conda_pre_commands():
     yield CondaPreCommand(
         name=f"{PLUGIN_NAME}-{HTTP_BASIC_AUTH_NAME}",
         action=basic_auth_manager.hook_action,
-        run_for={"search", "install", "update", "notices", "create", "search"},
+        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS),
     )
     yield CondaPreCommand(
         name=f"{PLUGIN_NAME}-{TOKEN_NAME}",
         action=token_auth_manager.hook_action,
-        run_for={"search", "install", "update", "notices", "create", "search"},
+        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS),
     )
 
 

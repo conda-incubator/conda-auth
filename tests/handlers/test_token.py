@@ -34,8 +34,7 @@ def test_is_anaconda_dot_org(channel_name, expected):
 
 def test_token_auth_manager_no_token(mocker, keyring):
     """
-    Test to make sure when there is no token set, we are able to set a new token via the ``input``
-    function.
+    Test to make sure when there is no token set, an exception is raised
     """
     token = "token"
     settings = {}
@@ -47,10 +46,8 @@ def test_token_auth_manager_no_token(mocker, keyring):
     keyring(None)
 
     # run code under test
-    manager.store(channel, settings)
-
-    # make assertions
-    assert manager._cache == {channel.canonical_name: (USERNAME, token)}
+    with pytest.raises(CondaAuthError, match="Token not found"):
+        manager.store(channel, settings)
 
 
 def test_token_auth_manager_with_token(keyring):

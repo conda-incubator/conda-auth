@@ -5,25 +5,25 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
 from ..constants import PLUGIN_NAME
+from ..exceptions import CondaAuthError
 from ..storage import storage
 from .base import AuthManager
 
-TOKEN_PARAM_NAME = "token"
+TOKEN_PARAM_NAME: str = "token"
 """
 Name of the configuration parameter where token information is stored
 """
 
-USERNAME = "token"
+USERNAME: str = "token"
 """
 Placeholder value for username; This is written to the secret storage backend
 """
 
-TOKEN_NAME = "token"
+TOKEN_NAME: str = "token"
 """
 Name used to refer to this authentication handler in configuration
 """
@@ -40,11 +40,16 @@ class TokenAuthManager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for secret.
         """
-        keyring_id = self.get_keyring_id(channel)
-        token = storage.get_password(keyring_id, USERNAME)
+        # First tried the value we passed in
+        token = settings.get(TOKEN_PARAM_NAME)
 
         if token is None:
-            token = self.get_token(settings)
+            # Try password manager if there was nothing there
+            keyring_id = self.get_keyring_id(channel)
+            token = storage.get_password(keyring_id, USERNAME)
+
+            if token is None:
+                raise CondaAuthError("Token not found")
 
         return USERNAME, token
 
@@ -60,23 +65,6 @@ class TokenAuthManager(AuthManager):
 
     def get_config_parameters(self) -> tuple[str, ...]:
         return (TOKEN_PARAM_NAME,)
-
-    def get_token(self, settings: Mapping[str, str | None]):
-        """
-        Attempt to first retrieve token from settings and then prompt the user for it.
-        """
-        token = settings.get(TOKEN_PARAM_NAME)
-
-        if token is None:
-            token = self.prompt_token()
-
-        return token
-
-    def prompt_token(self) -> str:
-        """
-        This can be overriden for classes that do not want to use the built-in function ``input``.
-        """
-        return input("Token: ")
 
     def get_auth_class(self) -> type:
         return TokenAuthHandler
@@ -114,7 +102,7 @@ class TokenAuthHandler(ChannelAuthBase):
         self.is_anaconda_dot_org = is_anaconda_dot_org(channel_name)
 
         if self.token is None:
-            raise CondaError(
+            raise CondaAuthError(
                 f"Unable to find authorization token for requests with channel {channel_name}"
             )
 
