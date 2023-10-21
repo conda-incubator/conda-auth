@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.entry-points.conda]
-conda-auth = "conda_auth.hooks"
+conda-auth = "conda_auth.plugin"
 
 [tool.setuptools.packages]
 find = {}

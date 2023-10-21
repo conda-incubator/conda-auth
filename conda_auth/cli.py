@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from typing import Literal
 
 import click
 from conda.base.context import context
@@ -15,7 +15,7 @@ from .handlers import (
     HTTP_BASIC_AUTH_NAME,
     TOKEN_NAME,
 )
-from .options import CustomOption
+from .options import ConditionalOption
 
 # Constants
 AUTH_MANAGER_MAPPING = {
@@ -31,133 +31,88 @@ SUCCESSFUL_COLOR = "green"
 
 FAILURE_COLOR = "red"
 
-VALID_AUTH_CHOICES = tuple(AUTH_MANAGER_MAPPING.keys())
-
 OPTION_DEFAULT = "CONDA_AUTH_DEFAULT"
 
 
-def parse_channel(ctx, param, value):
-    """
-    Converts the channel name into a Channel object
-    """
-    return Channel(value)
-
-
-class ExtraContext:
-    """
-    Used to provide more information about the running environment
-    """
-
-    def __init__(self):
-        self.used_options = set()
-
-
-def get_auth_manager(options, extra_context: ExtraContext) -> tuple[str, AuthManager]:
+def get_auth_manager(
+    auth: str | None = None,
+    basic: bool | None = None,
+    token: str | Literal[False] | None = None,
+    **kwargs,
+) -> tuple[str, AuthManager]:
     """
     Based on CLI options provided, return the correct auth manager to use.
     """
-    auth_type = options.get("auth")
-
-    if auth_type is not None:
-        auth_manager = AUTH_MANAGER_MAPPING.get(auth_type)
-        if auth_manager is None:
-            raise CondaAuthError(
-                f'Invalid authentication type. Valid types are: "{", ".join(VALID_AUTH_CHOICES)}"'
-            )
-        return auth_type, auth_manager
-
-    # we use http basic auth when "username" or "password" are present
-    if "basic" in extra_context.used_options:
-        auth_manager = basic_auth_manager
-        auth_type = HTTP_BASIC_AUTH_NAME
-
-    # we use token auth when "token" is present
-    elif "token" in extra_context.used_options:
-        auth_manager = token_auth_manager
-        auth_type = TOKEN_NAME
-
-    # raise error if authentication type not found
+    if auth:  # set in .condarc
+        pass
+    elif basic:  # defined on CLI
+        auth = HTTP_BASIC_AUTH_NAME
+    elif token:  # defined on CLI
+        auth = TOKEN_NAME
     else:
+        raise CondaAuthError("Missing authentication type.")
+
+    # check if auth defined maps to a valid auth manager
+    if not (auth_manager := AUTH_MANAGER_MAPPING.get(auth)):
         raise CondaAuthError(
-            click.style(
-                "Please specify an authentication type to use"
-                " with either the `--basic` or `--token` options.",
-                fg=FAILURE_COLOR,
-            )
+            "Invalid authentication type. "
+            f"Valid types are: {set(AUTH_MANAGER_MAPPING)}"
         )
 
-    return auth_type, auth_manager
+    return auth, auth_manager
 
 
-def get_channel_settings(channel: str) -> MutableMapping[str, str] | None:
-    """
-    Retrieve the channel settings from the context object
-    """
-    for settings in context.channel_settings:
-        if settings.get("channel") == channel:
-            return dict(**settings)
-
-
-@click.group("auth")
-@click.pass_context
-def group(ctx):
+@click.group("auth", context_settings={"help_option_names": ["-h", "--help"]})
+def auth():
     """
     Commands for handling authentication within conda
     """
-    ctx.obj = ExtraContext()
 
 
-def auth_wrapper(args):
-    """Authentication commands for conda"""
-    group(args=args, prog_name="conda auth", standalone_mode=True)
-
-
-@group.command("login")
-@click.argument("channel", callback=parse_channel)
+@auth.command("login")
+@click.argument("channel", callback=lambda ctx, param, value: Channel(value))
+@click.option(
+    "-b",
+    "--basic",
+    help="Save login credentials as HTTP basic authentication",
+    cls=ConditionalOption,
+    is_flag=True,
+    mutually_exclusive={"token"},
+    not_required_if={"token"},
+)
 @click.option(
     "-u",
     "--username",
     help="Username to use for private channels using HTTP Basic Authentication",
-    cls=CustomOption,
-    prompt=True,
-    mutually_exclusive=("token",),
-    prompt_when="basic",
+    cls=ConditionalOption,
+    prompt_when={"basic"},
+    mutually_exclusive={"token"},
 )
 @click.option(
     "-p",
     "--password",
     help="Password to use for private channels using HTTP Basic Authentication",
-    cls=CustomOption,
-    prompt=True,
+    cls=ConditionalOption,
+    prompt_when={"basic"},
     hide_input=True,
-    mutually_exclusive=("token",),
-    prompt_when="basic",
+    mutually_exclusive={"token"},
 )
 @click.option(
     "-t",
     "--token",
     help="Token to use for private channels using an API token",
+    cls=ConditionalOption,
     prompt=True,
     prompt_required=False,
-    cls=CustomOption,
-    mutually_exclusive=("username", "password"),
+    mutually_exclusive={"basic", "username", "password"},
+    not_required_if={"basic"},
 )
-@click.option(
-    "-b",
-    "--basic",
-    is_flag=True,
-    cls=CustomOption,
-    help="Save login credentials as HTTP basic authentication",
-)
-@click.pass_obj
-def login(extra_context: ExtraContext, channel: Channel, **kwargs):
+def login(channel: Channel, **kwargs):
     """
     Log in to a channel by storing the credentials or tokens associated with it
     """
-    settings = {key: val for key, val in kwargs.items() if val is not None}
-
-    auth_type, auth_manager = get_auth_manager(settings, extra_context)
-    username: str | None = auth_manager.store(channel, settings)
+    auth_type, auth_manager = get_auth_manager(**kwargs)
+    username: str | None = auth_manager.store(channel, kwargs)
 
     click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg=SUCCESSFUL_COLOR))
 
@@ -171,19 +126,24 @@ def login(extra_context: ExtraContext, channel: Channel, **kwargs):
         raise CondaAuthError(str(exc))
 
 
-@group.command("logout")
-@click.argument("channel", callback=parse_channel)
-@click.pass_obj
-def logout(extra_context: ExtraContext, channel: Channel):
+@auth.command("logout")
+@click.argument("channel", callback=lambda ctx, param, value: Channel(value))
+def logout(channel: Channel):
     """
     Log out of a channel by removing any credentials or tokens associated with it.
     """
-    settings = get_channel_settings(channel.canonical_name)
-
-    if settings is None:
+    settings = next(
+        (
+            settings
+            for settings in context.channel_settings
+            if settings.get("channel") == channel.canonical_name
+        ),
+        None,
+    )
+    if not settings:
         raise CondaAuthError("Unable to find information about logged in session.")
 
-    auth_type, auth_manager = get_auth_manager(settings, extra_context)
+    auth_type, auth_manager = get_auth_manager(**settings)
     auth_manager.remove_secret(channel, settings)
 
     click.echo(click.style(SUCCESSFUL_LOGOUT_MESSAGE, fg=SUCCESSFUL_COLOR))
