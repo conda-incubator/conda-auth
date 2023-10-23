@@ -9,10 +9,11 @@ def keyring(mocker):
     """
 
     def _keyring(secret):
+        get_keyring = mocker.patch("conda_auth.storage.get_keyring")
         keyring_storage = mocker.patch("conda_auth.storage.keyring.keyring")
         keyring_storage.get_password.return_value = secret
 
-        return keyring_storage
+        return keyring_storage, get_keyring
 
     return _keyring
 

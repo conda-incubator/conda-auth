@@ -66,6 +66,25 @@ You can do this by running the following command:
 conda auth logout <channel_name>
 ```
 
+### Storage backend unavailable?
+
+Conda auth relies on the [keyring](https://github.com/jaraco/keyring) package to store its passwords and secrets.
+Because of this, it only supports a limited number of operating systems, mostly desktop operating systems like
+Windows, OSX and several Linux variants.
+
+If you want to use conda-auth, but are not using a supported operating system, you can install the
+[keyring-alt](https://github.com/jaraco/keyrings.alt) package:
+
+```
+conda install -c conda-forge keyrings.alt
+```
+
+```{caution}
+This method stores passwords and secrets in a plain text file on the filesystem and may not be acceptable for
+production usage. Please read the [project's README](https://github.com/jaraco/keyrings.alt) for more
+information.
+```
+
 ## Reporting bugs
 
 Have you found a bug you want to let us know about? Please create an issue at our

@@ -90,7 +90,7 @@ def test_basic_auth_manager_cache_exists(keyring):
     manager._cache = {channel.canonical_name: (username, secret)}
 
     # setup mocks
-    keyring_mock = keyring(secret)
+    keyring_mock, _ = keyring(secret)
 
     # run code under test
     manager.store(channel, settings)
@@ -111,13 +111,13 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
     channel = Channel("tester")
 
     # setup mocks
-    keyring_mocks = keyring(secret)
+    keyring_mock, _ = keyring(secret)
 
     # run code under test
     manager.remove_secret(channel, settings)
 
     # make assertions
-    keyring_mocks.delete_password.assert_called_once()
+    keyring_mock.delete_password.assert_called_once()
 
 
 def test_basic_auth_manager_remove_existing_secret_no_username(keyring):
@@ -148,11 +148,9 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
     channel = Channel("tester")
 
     # setup mocks
-    keyring_mocks = keyring(secret)
+    keyring_mock, _ = keyring(secret)
     message = "Secret not found."
-    keyring_mocks.delete_password.side_effect = PasswordDeleteError(message)
-
-    # run code under test
+    keyring_mock.delete_password.side_effect = PasswordDeleteError(message)
 
     # make assertions
     with pytest.raises(CondaAuthError, match=f"Unable to remove secret: {message}"):
