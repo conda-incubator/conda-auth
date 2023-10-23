@@ -5,14 +5,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-import keyring
-from keyring.errors import PasswordDeleteError
-from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import LOGOUT_ERROR_MESSAGE, PLUGIN_NAME
+from ..constants import PLUGIN_NAME
 from ..exceptions import CondaAuthError
+from ..storage import storage
 from .base import AuthManager
 
 TOKEN_PARAM_NAME: str = "token"
@@ -48,7 +46,7 @@ class TokenAuthManager(AuthManager):
         if token is None:
             # Try password manager if there was nothing there
             keyring_id = self.get_keyring_id(channel)
-            token = keyring.get_password(keyring_id, USERNAME)
+            token = storage.get_password(keyring_id, USERNAME)
 
             if token is None:
                 raise CondaAuthError("Token not found")
@@ -60,10 +58,7 @@ class TokenAuthManager(AuthManager):
     ) -> None:
         keyring_id = self.get_keyring_id(channel)
 
-        try:
-            keyring.delete_password(keyring_id, USERNAME)
-        except PasswordDeleteError as exc:
-            raise CondaAuthError(f"{LOGOUT_ERROR_MESSAGE} {exc}")
+        storage.delete_password(keyring_id, USERNAME)
 
     def get_auth_type(self) -> str:
         return TOKEN_NAME
@@ -107,7 +102,7 @@ class TokenAuthHandler(ChannelAuthBase):
         self.is_anaconda_dot_org = is_anaconda_dot_org(channel_name)
 
         if self.token is None:
-            raise CondaError(
+            raise CondaAuthError(
                 f"Unable to find authorization token for requests with channel {channel_name}"
             )
 

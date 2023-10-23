@@ -4,9 +4,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 
 import conda.base.context
-import keyring
 from conda.models.channel import Channel
 from conda.base.context import context as global_context
+
+from ..storage import storage
 
 
 class AuthManager(ABC):
@@ -57,11 +58,8 @@ class AuthManager(ABC):
     def save_credentials(self, channel: Channel, username: str, secret: str) -> None:
         """
         Saves the provided credentials to our credential store.
-
-        TODO: Method may be expanded in the future to allow the use of other storage
-              mechanisms.
         """
-        keyring.set_password(self.get_keyring_id(channel), username, secret)
+        storage.set_password(self.get_keyring_id(channel), username, secret)
 
     def fetch_secret(
         self, channel: Channel, settings: Mapping[str, str | None]

@@ -14,7 +14,7 @@ def test_logout_of_active_session(mocker, runner, keyring):
 
     # setup mocks
     mock_context = mocker.patch("conda_auth.cli.context")
-    keyring_mocks = keyring(secret)
+    keyring_mock, _ = keyring(secret)
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
     ]
@@ -26,7 +26,7 @@ def test_logout_of_active_session(mocker, runner, keyring):
     assert result.exit_code == 0
 
     # Make sure the delete password call was invoked correctly
-    assert keyring_mocks.basic.delete_password.mock_calls == [
+    assert keyring_mock.delete_password.mock_calls == [
         mocker.call(f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel_name}", username)
     ]
 
