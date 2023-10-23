@@ -1,5 +1,6 @@
 conda-forge::darker
 conda-forge::flake8
+conda-forge::keyrings.alt
 conda-forge::mypy
 conda-forge::pip
 conda-forge::pyupgrade
