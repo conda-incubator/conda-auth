@@ -38,61 +38,7 @@ jobs:
               - 'recipe/**'
               - '.github/workflows/tests.yml'
 
-  windows:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-
-    runs-on: windows-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        python-version: ["3.8", "3.11"]
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - uses: mamba-org/setup-micromamba@v1
-        with:
-          environment-file: environment.yml
-          init-shell: >-
-            powershell
-          cache-environment: false
-          cache-downloads: true
-          post-cleanup: 'all'
-
-      - name: micromamba info (pwsh)
-        shell: pwsh
-        run: micromamba info
-
-      - name: Install dev dependencies
-        shell: pwsh
-        run: |
-          micromamba install --file requirements.dev.txt --yes
-
-      - name: micromamba list
-        shell: pwsh
-        run: micromamba list
-
-      - name: Install conda-auth
-        shell: pwsh
-        run: |
-          pip install -e .
-
-      - name: Test with pytest
-        shell: pwsh
-        run: |
-          pytest --doctest-modules --cov-report=xml --cov=conda_auth
-
-      - name: Upload Coverage to Codecov
-        uses: codecov/codecov-action@v2
-        with:
-          flags: ${{ runner.os }},${{ matrix.python-version }}
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  unix-like:
+  tests:
     needs: changes
     if: needs.changes.outputs.code == 'true'
 
@@ -101,43 +47,18 @@ jobs:
       fail-fast: true
       matrix:
         python-version: ["3.8", "3.11"]
-        os: ["macos-latest", "ubuntu-latest"]
+        os: ["macos-latest", "ubuntu-latest", "windows-latest"]
 
     steps:
       - uses: actions/checkout@v3
 
-      - uses: mamba-org/setup-micromamba@v1
+      - uses: prefix-dev/setup-pixi@v0.3.0
         with:
-          generate-run-shell: true
-          environment-file: environment.yml
-          init-shell: >-
-            bash
-          cache-environment: false
-          cache-downloads: true
-          post-cleanup: 'all'
+          pixi-version: v0.6.0
+          cache: true
 
-      - name: micromamba info
-        shell: bash -el {0}
-        run: micromamba info
-
-      - name: Install dev dependencies
-        shell: bash -el {0}
-        run: |
-          micromamba install --file requirements.dev.txt --yes
-
-      - name: micromamba list
-        shell: bash -el {0}
-        run: micromamba list
-
-      - name: Install conda-auth
-        shell: bash -el {0}
-        run: |
-          pip install -e .
-
-      - name: Test with pytest
-        shell: micromamba-shell {0}
-        run: |
-          pytest --doctest-modules --cov-report=xml --cov=conda_auth
+      - run: pixi run testcov
+        name: run test and generate coverage
 
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v2

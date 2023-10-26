@@ -1,0 +1,38 @@
+[project]
+name = "conda-auth"
+version = "0.2.0"
+description = "A conda plugin for handling multiple authentication schemes"
+authors = ["Travis Hathaway <travis.j.hathaway@gmail.com>"]
+channels = ["conda-forge"]
+platforms = ["linux-64", "win-64", "osx-64", "osx-arm64"]
+
+[tasks]
+# Run this first; it will install conda-auth as a local package
+develop = "pip install -e ."
+test = "pytest --doctest-modules"
+testcov = "pytest --cov=conda_auth --cov-report=xml --doctest-modules"
+testhtml = "pytest --cov=conda_auth --cov-report=html --doctest-modules"
+build = "rattler-build build --recipe recipe.yaml"
+
+[dependencies]
+python = ">=3.8"
+conda = ">=23.9.0"
+keyring = "*"
+requests = "*"
+"ruamel.yaml" = "*"
+
+# dev-dependencies
+darker = "*"
+flake8 = "*"
+"keyrings.alt" = "*"
+mypy = "*"
+pip = "*"
+pyupgrade = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-mock = "*"
+pre-commit = "*"
+rattler-build = "*"
+
+[activation]
+scripts = ["setup.sh"]
