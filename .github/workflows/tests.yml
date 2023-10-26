@@ -59,7 +59,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pixi add python={{ matrix.python-version }}
+          pixi add python=${{ matrix.python-version }}
           pixi install
 
       - name: Run test and generate coverage
