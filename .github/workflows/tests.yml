@@ -57,10 +57,15 @@ jobs:
           pixi-version: v0.6.0
           cache: true
 
-      - run: pixi run testcov
-        name: run test and generate coverage
+      - name: Install dependencies
+        run: |
+          pixi add python={{ matrix.python-version }}
+          pixi install
 
-      - name: Upload Coverage to Codecov
+      - name: Run test and generate coverage
+        run: pixi run testcov
+
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
         with:
           flags: ${{ runner.os }},${{ matrix.python-version }}
