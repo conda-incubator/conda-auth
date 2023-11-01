@@ -1,0 +1,50 @@
+context:
+  name: conda-auth
+  version: 0.2.0
+  sha256: ec0e26ac671f71069529696c6a4c67be5d1d92d79393091095559289fd11a3da
+
+package:
+  name: conda-auth
+  version: "{{ version }}"
+
+source:
+  url: "https://github.com/conda-incubator/{{ name }}/archive/refs/tags/{{ version }}.tar.gz"
+  sha256: "{{ sha256 }}"
+
+build:
+  noarch: python
+  script: python -m pip install . -vv
+  number: 0
+
+requirements:
+  host:
+    - python >=3.8,<4.0
+    - pip
+    - setuptools-scm
+  run:
+    - python >=3.8.1,<4.0.0
+    - click
+    - conda >=23.9.0
+    - keyring
+    - requests
+    - ruamel.yaml
+
+test:
+  imports:
+    - conda_auth
+  commands:
+    - pip check
+  requires:
+    - pip
+    - rich
+
+about:
+  home: https://github.com/conda-incubator/conda-auth
+  summary: Conda plugin for improved access to private channels
+  license: BSD-3-Clause
+  license_file: LICENSE
+
+extra:
+  recipe-maintainers:
+    - travishathaway
+    - jezdez
