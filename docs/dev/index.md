@@ -33,30 +33,42 @@ and is at the latest version.
 
 ### Creating the development environment
 
+#### Prerequisites
+
+This project is managed with the [pixi](https://pixi.sh). Please [install pixi](https://prefix.dev/docs/pixi/overview#installation)
+first before continuing.
+
 To set up your development environment, follow these steps:
 
 1. Create a fork of the repository in GitHub (sign up a for a GitHub account if your don't already have one)
 2. Clone the forked repository to your local computer
 3. Set up and activate the development environment with these commands:
    ```
-   conda env create --file environment.yml
-   conda install --file requirements.dev.txt
-   conda activate conda-auth
-   pip install -e .
+   pixi install
+   pixi run develop
    ```
-4. To verify the installation, run the `conda` command with no arguments and make sure `auth` shows up under
+4. Next, you will want to start new shell with the following command:
+   ```
+   pixi shell
+   ```
+5. To verify the installation, run the `conda` command with no arguments and make sure `auth` shows up under
    the list of available commands.
 
-Once this has been done, you should be ready to start make changes to the conda-auth library and
+Once this has been done, you should be ready to start make changes to the conda-auth plugin and
 experimenting with it on your computer.
 
 ### Running tests
 
-This project uses `pytest`. To run the test for conda-auth, run the following command from an activated
-development environment:
+To run the test for conda-auth, run the following command:
 
 ```
-pytest tests
+pixi run test
+```
+
+Or, to generate an HTML coverage report, run with the following command:
+
+```
+pixi run testhtml
 ```
 
 ## Submitting a pull request

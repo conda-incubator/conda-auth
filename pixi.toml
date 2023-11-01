@@ -39,4 +39,4 @@ pre-commit = "*"
 rattler-build = "*"
 
 [activation]
-scripts = ["setup.sh"]
+scripts = ["dev/setup.sh"]
