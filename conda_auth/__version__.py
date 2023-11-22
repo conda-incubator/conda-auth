@@ -1,5 +1,7 @@
-__title__ = "conda_auth"
-__description__ = (
-    "A conda plugin for handling multiple authentication schemes"
-)
-__version__ = "0.2.0"
+try:
+    # Only available for releases
+    from ._version import __version__, __version_tuple__
+except ImportError:
+    # Shown during development
+    __version__ = "0.0.0.dev0"
+    __version_tuple__ = ("0.0.0", "dev0")
