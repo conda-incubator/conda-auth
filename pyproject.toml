@@ -27,7 +27,7 @@ dependencies = [
   "conda",
   "keyring",
   "requests",
-  "ruamel.yaml",
+  "ruamel.yaml<0.18",
 ]
 
 [project.entry-points.conda]

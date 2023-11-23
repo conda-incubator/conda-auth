@@ -22,7 +22,7 @@ requirements:
     - conda >=23.9.0
     - keyring
     - requests
-    - ruamel.yaml<18
+    - ruamel.yaml <18
 
 test:
   imports:
