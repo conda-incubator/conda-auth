@@ -1,13 +1,9 @@
-{% set name = "conda-auth" %}
-{% set version = "0.2.0" %}
-
 package:
-  name: {{ name|lower }}
-  version: {{ version }}
+  name: conda-auth
+  version: {{ GIT_DESCRIBE_TAG }}.{{ GIT_BUILD_STR }}
 
 source:
-  url: https://github.com/conda-incubator/{{ name }}/archive/refs/tags/{{ version}}.tar.gz
-  sha256: ec0e26ac671f71069529696c6a4c67be5d1d92d79393091095559289fd11a3da
+  git_url: ../
 
 build:
   noarch: python
@@ -18,7 +14,8 @@ requirements:
   host:
     - python >=3.8,<4.0
     - pip
-    - setuptools-scm
+    - hatchling
+    - hatch-vcs
   run:
     - python >=3.8.1,<4.0.0
     - click
