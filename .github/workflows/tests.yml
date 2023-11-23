@@ -71,3 +71,41 @@ jobs:
           flags: ${{ runner.os }},${{ matrix.python-version }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    name: Canary Build
+    needs: [tests]
+    # only build canary build if
+    # - prior steps succeeded,
+    # - this is the main branch
+    if: >-
+      success()
+      && !github.event.repository.fork
+      && github.ref_name == 'main'
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            subdir: noarch
+    env:
+      CONDA_SOLVER: classic
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # Clean checkout of specific git ref needed for package metadata version
+      # which needs env vars GIT_DESCRIBE_TAG and GIT_BUILD_STR:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          clean: true
+          fetch-depth: 0
+
+      # TODO: If this is ever promoted to conda, we need to upload to "conda-canary" organization instead
+      - name: Create and upload canary build
+        uses: conda/actions/canary-release@v23.3.0
+        with:
+          package-name: ${{ github.event.repository.name }}
+          subdir: ${{ matrix.subdir }}
+          anaconda-org-channel: thath
+          anaconda-org-label: ${{ github.ref_name == 'main' && 'dev' || format('{0}-{1}', github.event.repository.name, github.ref_name) }}
+          anaconda-org-token: ${{ secrets.ANACONDA_ORG_TOKEN }}
+          conda-build-arguments: '--override-channels -c conda-forge -c defaults'
