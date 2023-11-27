@@ -24,6 +24,17 @@ ENV_COMMANDS = {
     "env_update",
 }
 
+BUILD_COMMANDS = {
+    "build",
+    "convert",
+    "debug",
+    "develop",
+    "index",
+    "inspect",
+    "metapackage",
+    "render",
+    "skeleton",
+}
 
 @hookimpl
 def conda_subcommands():
@@ -45,12 +56,12 @@ def conda_pre_commands():
     yield CondaPreCommand(
         name=f"{PLUGIN_NAME}-{HTTP_BASIC_AUTH_NAME}",
         action=basic_auth_manager.hook_action,
-        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS),
+        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS, BUILD_COMMANDS),
     )
     yield CondaPreCommand(
         name=f"{PLUGIN_NAME}-{TOKEN_NAME}",
         action=token_auth_manager.hook_action,
-        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS),
+        run_for=BUILTIN_COMMANDS.union(ENV_COMMANDS, BUILD_COMMANDS),
     )
 
 
