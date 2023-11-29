@@ -26,7 +26,7 @@ def test_conda_pre_commands_hook():
     """
     objs = list(plugin.conda_pre_commands())
 
-    run_for = BUILTIN_COMMANDS.union(plugin.ENV_COMMANDS)
+    run_for = BUILTIN_COMMANDS.union(plugin.ENV_COMMANDS, plugin.BUILD_COMMANDS)
 
     assert objs[0].name == f"{PLUGIN_NAME}-{HTTP_BASIC_AUTH_NAME}"
     assert objs[0].run_for == run_for
