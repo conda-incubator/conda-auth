@@ -52,7 +52,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = "pydata_sphinx_theme"
+html_theme = "conda_sphinx_theme"
 html_static_path = ["_static"]
 
 html_css_files = [
@@ -64,14 +64,14 @@ html_extra_path = ["robots.txt"]
 
 html_theme_options = {
     "github_url": "https://github.com/conda-incubator/conda-auth",
-    "collapse_navigation": False,
-    "navigation_depth": 1,
+    # The maximum depth of the table of contents tree. Set this to -1 to allow
+    # unlimited depth.
+    "navigation_depth": -1,
+    "show_prev_next": False,
+    # Navbar icon links
+    "navbar_start": ["navbar-logo"],
     "use_edit_page_button": True,
-    "show_toc_level": 1,
-    "navbar_align": "left",
-    "header_links_before_dropdown": 6,
-    "show_nav_level": 2,
-    # "announcement": "<p>This is the documentation of the new conda-libmamba-solver plugin!</p>",
+    "navbar_center": ["navbar_center"],
 }
 
 html_context = {
