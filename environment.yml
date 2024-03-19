@@ -1,0 +1,9 @@
+name: conda-auth-dev
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - conda>=23.9.0
+  - keyring
+  - requests
+  - "ruamel.yaml"
