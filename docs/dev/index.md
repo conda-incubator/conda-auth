@@ -41,7 +41,6 @@ To set up your development environment, follow these steps:
 1. Set up the development environment with these commands:
    ```
    conda env create -n conda-auth-dev -f environment.yml
-   conda install -n conda-auth-dev --file requirements-dev.txt
    ```
 2. Next, you will want to activate the environment:
    ```

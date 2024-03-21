@@ -1,9 +1,0 @@
-darker
-flake8
-keyrings.alt
-mypy
-pyupgrade
-pytest
-pytest-cov
-pytest-mock
-pre-commit
