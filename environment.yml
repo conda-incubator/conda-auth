@@ -1,0 +1,18 @@
+name: conda-auth-dev
+channels:
+  - conda-forge
+dependencies:
+  - conda>=23.9.0
+  - darker
+  - flake8
+  - keyring
+  - keyrings.alt
+  - mypy
+  - pre-commit
+  - pytest
+  - pytest-cov
+  - pytest-mock
+  - python>=3.8
+  - pyupgrade
+  - requests
+  - "ruamel.yaml"
