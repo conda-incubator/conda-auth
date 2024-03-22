@@ -25,7 +25,22 @@ keyring = "*"
 requests = "*"
 "ruamel.yaml" = "*"
 
-# dev-dependencies
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py310.dependencies]
+python = "3.10.*"
+
+[feature.py39.dependencies]
+python = "3.9.*"
+
+[feature.py38.dependencies]
+python = "3.8.*"
+
+[feature.dev.dependencies]
 darker = "*"
 flake8 = "*"
 "keyrings.alt" = "*"
@@ -37,6 +52,14 @@ pytest-cov = "*"
 pytest-mock = "*"
 pre-commit = "*"
 rattler-build = "*"
+
+[environments]
+dev = ["dev"]
+dev-py312 = ["dev", "py312"]
+dev-py311 = ["dev", "py311"]
+dev-py310 = ["dev", "py310"]
+dev-py39 = ["dev", "py39"]
+dev-py38 = ["dev", "py38"]
 
 [activation]
 scripts = ["dev/setup.sh"]

@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python-version: ["3.8", "3.11"]
+        test-env: ["dev-py38", "dev-py39", "dev-py310", "dev-py311", "dev-py312"]
         os: ["macos-latest", "ubuntu-latest", "windows-latest"]
 
     steps:
@@ -54,21 +54,16 @@ jobs:
 
       - uses: prefix-dev/setup-pixi@v0.3.0
         with:
-          pixi-version: v0.6.0
+          pixi-version: v0.17.0
           cache: true
 
-      - name: Install dependencies
-        run: |
-          pixi add python=${{ matrix.python-version }} &&
-          pixi install
-
       - name: Run test and generate coverage
-        run: pixi run testcov
+        run: pixi run --environment ${{matrix.test-env}} testcov
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
         with:
-          flags: ${{ runner.os }},${{ matrix.python-version }}
+          flags: ${{ runner.os }},${{ matrix.test-env }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
