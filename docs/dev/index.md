@@ -102,13 +102,27 @@ pytest --cov=conda_auth --cov-report=html --doctest-modules
 To run the test for conda-auth, run the following command:
 
 ```
-pixi run test
+pixi run --environment dev test
 ```
 
 Or, to generate an HTML coverage report, run with the following command:
 
 ```
-pixi run testhtml
+pixi run --environment dev testhtml
+```
+
+If you want to run tests for different Python versions, we have configured this
+project to use all the latest supported versions. You can do so by specifying
+them via the `--environment` option:
+
+```bash
+# For Python 3.10
+pixi run --environment dev-py310 test
+```
+
+```bash
+# For Python 3.9
+pixi run --environment dev-py39 test
 ```
 
 ## Submitting a pull request
