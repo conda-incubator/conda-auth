@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from contextlib import suppress
 from getpass import getpass
 from typing import Literal
 
@@ -23,8 +24,9 @@ from ..handlers import (
     token_auth_manager,
 )
 from ..handlers.base import allows_plaintext_http, validate_secure_channel
-from ..oauth2_client import perform_oauth_login, with_target
+from ..oauth2_client import perform_oauth_login, revoke_oauth_record, with_target
 from ..storage import storage
+from ..verification import verify_channel_credentials
 from .config import (
     get_updated_channel_settings,
     remove_channel_settings,
@@ -119,6 +121,7 @@ def login(channel: Channel, **kwargs):
     """
     auth_type, auth_manager = get_auth_manager(**kwargs)
     allow_plaintext_http = allows_plaintext_http(kwargs)
+    verify = bool(kwargs.get("verify"))
     channel_setting = channel.canonical_name
     credential_target = channel_setting
     validate_secure_channel(channel, allow_plaintext_http=allow_plaintext_http)
@@ -154,11 +157,13 @@ def login(channel: Channel, **kwargs):
         auth_manager.cache_clear(channel.canonical_name)
         raise CondaAuthError(str(exc))
 
+    stored_record = None
     try:
         if record is not None:
             storage.set_credential(record)
+            stored_record = record
         elif username is not None and secret is not None:
-            auth_manager.save_credentials(
+            stored_record = auth_manager.save_credentials(
                 channel,
                 username,
                 secret,
@@ -166,12 +171,23 @@ def login(channel: Channel, **kwargs):
                 target=credential_target,
                 settings=extra_params,
             )
+        if verify and stored_record is not None:
+            verify_channel_credentials(channel, stored_record)
     except Exception as credential_error:
         auth_manager.cache_clear(channel.canonical_name)
+        rollback_error = None
         try:
             with ConfigurationFile.from_user_condarc() as config:
                 remove_channel_settings(config, channel_setting)
-        except (CondaError, OSError, yaml.YAMLError) as rollback_error:
+        except (CondaError, OSError, yaml.YAMLError) as exc:
+            rollback_error = exc
+        if stored_record is not None:
+            if stored_record.auth_type == OAUTH2_NAME:
+                with suppress(Exception):
+                    revoke_oauth_record(stored_record)
+            with suppress(Exception):
+                storage.delete_credential(stored_record.target)
+        if rollback_error is not None:
             raise CondaAuthError(
                 f"{credential_error}. Failed to roll back channel settings: {rollback_error}"
             ) from credential_error
@@ -261,6 +277,7 @@ def auth(args: argparse.Namespace) -> None:
                 basic=True,
                 username=username,
                 password=password,
+                verify=args.verify,
                 auth_allow_plaintext_http=args.allow_plaintext_http,
             )
             output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
@@ -280,6 +297,7 @@ def auth(args: argparse.Namespace) -> None:
             oauth_output_stream=oauth_output_stream,
             token_header=args.token_header,
             token_template=args.token_template,
+            verify=args.verify,
             auth_allow_plaintext_http=args.allow_plaintext_http,
         )
         output_success(args, SUCCESSFUL_LOGIN_MESSAGE)

@@ -15,6 +15,21 @@ conda install -c conda-forge conda-auth
 Once installed the plugin makes two new commands available: `conda auth login` and `conda auth logout`. The plugin
 supports various types of authentication schemes. Read below to learn how to use each.
 
+### Credential verification
+
+Login can optionally verify credentials by probing conda channel metadata paths:
+
+```
+conda auth login <channel_name> --basic --verify
+```
+
+Verification is best-effort. Conda-auth prefers the smaller sharded repodata index,
+then falls back to `repodata.json` and `channeldata.json`. If conda-auth can read
+channel metadata, login succeeds. If the channel returns a clear authentication failure
+such as `401` or `403`, login fails and rolls back the stored credential and auth
+configuration. Missing metadata, network failures, redirects, and server errors are
+treated as inconclusive and do not fail login.
+
 ### HTTP basic authentication
 
 To log in to a channel using HTTP basic authentication, run the following command:
