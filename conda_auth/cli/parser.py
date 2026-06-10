@@ -75,6 +75,14 @@ def add_plaintext_option(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_verify_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify credentials by probing channel metadata before reporting success",
+    )
+
+
 def configure_parser(parser: argparse.ArgumentParser) -> None:
     """
     Configure the conda auth subcommand parser.
@@ -112,6 +120,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     add_token_options(login_parser)
     add_oauth_options(login_parser)
     add_plaintext_option(login_parser)
+    add_verify_option(login_parser)
     add_parser_json(login_parser)
     login_parser.set_defaults(parser=login_parser)
 
