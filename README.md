@@ -81,6 +81,9 @@ possible.
 Conda's `s3://` support currently uses boto3's normal AWS credential chain. conda-auth
 does not set process-wide AWS environment variables for S3 credentials.
 
+For more details about storage, platform behavior, and common workflows, see the
+[user FAQ](docs/user/faq.md).
+
 ## Contributing to This Project
 
 Contributions are very welcome to this project!
