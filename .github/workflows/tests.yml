@@ -4,43 +4,36 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "conda_auth/**"
+      - "tests/**"
+      - "*.py"
+      - "recipe/**"
+      - ".github/workflows/tests.yml"
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - "conda_auth/**"
+      - "tests/**"
+      - "*.py"
+      - "recipe/**"
+      - ".github/workflows/tests.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
-  # detect whether any code changes are included in this PR
-  changes:
-    runs-on: ubuntu-latest
-    permissions:
-      # necessary to detect changes
-      # https://github.com/dorny/paths-filter#supported-workflows
-      pull-requests: read
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-    steps:
-      - uses: actions/checkout@v3
-        # dorny/paths-filter needs git clone for push events
-        # https://github.com/dorny/paths-filter#supported-workflows
-        if: github.event_name != 'pull_request'
-      - uses: dorny/paths-filter@v2.11.1
-        id: filter
-        with:
-          filters: |
-            code:
-              - 'conda_auth/**'
-              - 'tests/**'
-              - '*.py'
-              - 'recipe/**'
-              - '.github/workflows/tests.yml'
-
   tests:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.draft == false
 
     runs-on: ${{ matrix.os }}
     strategy:
@@ -50,18 +43,18 @@ jobs:
         os: ["macos-latest", "ubuntu-latest", "windows-latest"]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - uses: prefix-dev/setup-pixi@v0.5.1
+      - uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11 # v0.9.6
         with:
-          pixi-version: v0.17.0
+          pixi-version: v0.70.2
           environments: ${{ matrix.test-env }}
 
       - name: Run test and generate coverage
         run: pixi run --environment ${{matrix.test-env}} testcov
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           flags: ${{ runner.os }},${{ matrix.test-env }}
         env:
@@ -88,7 +81,7 @@ jobs:
     steps:
       # Clean checkout of specific git ref needed for package metadata version
       # which needs env vars GIT_DESCRIBE_TAG and GIT_BUILD_STR:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ github.ref }}
           clean: true
@@ -96,7 +89,7 @@ jobs:
 
       # TODO: If this is ever promoted to conda, we should upload to "conda-canary" organization instead
       - name: Create and upload canary build
-        uses: conda/actions/canary-release@v23.3.0
+        uses: conda/actions/canary-release@7f6830b1428a9bd47f0b068892c77eae95207037 # v26.1.0
         with:
           package-name: ${{ github.event.repository.name }}
           subdir: ${{ matrix.subdir }}
