@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
+from keyring.errors import PasswordDeleteError
 
 from conda_auth.constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.token import (
+    TOKEN_FILE_ROOTS_ENV_VAR,
     TOKEN_NAME,
     TOKEN_PARAM_NAME,
     USERNAME,
@@ -18,6 +18,17 @@ from conda_auth.handlers.token import (
     manager,
 )
 from conda_auth.storage.keyring import KeyringStorage
+
+
+def store_token_credential(channel: str, token: str) -> None:
+    KeyringStorage().set_credential(
+        CredentialRecord(
+            target=channel,
+            auth_type=TOKEN_NAME,
+            username=USERNAME,
+            token=token,
+        )
+    )
 
 
 def store_custom_token_credential(
@@ -39,6 +50,15 @@ def store_custom_token_credential(
     )
 
 
+def write_mounted_token_file(tmp_path, monkeypatch, content: str = "token\n"):
+    secret_root = tmp_path / "secrets"
+    secret_root.mkdir()
+    monkeypatch.setenv(TOKEN_FILE_ROOTS_ENV_VAR, str(secret_root))
+    token_file = secret_root / "conda_auth_secret"
+    token_file.write_text(content)
+    return token_file
+
+
 @pytest.fixture(autouse=True)
 def clean_up_manager_cache():
     """Makes sure the manager cache gets emptied after each test run"""
@@ -57,6 +77,7 @@ def test_token_auth_manager_rejects_missing_or_invalid_token(keyring, settings):
     """Missing and invalid tokens raise an auth error."""
     channel = Channel("tester")
 
+    # No token exists in settings or keyring, so store() must fail.
     keyring(None)
 
     with pytest.raises(CondaAuthError, match="Token not found"):
@@ -82,6 +103,7 @@ def test_token_auth_manager_with_token(keyring, channel_name, settings):
     token = settings[TOKEN_PARAM_NAME]
     channel = Channel(channel_name)
 
+    # CLI-supplied tokens should be accepted even when keyring starts empty.
     keyring(None)
 
     manager.store(channel, settings)
@@ -117,9 +139,25 @@ def test_token_legacy_migration_uses_auth_target(keyring):
     )
 
 
+def test_token_auth_manager_store_token_file_does_not_persist_secret(
+    tmp_path, monkeypatch, keyring
+):
+    """The generic manager.store path keeps token-file auth out of keyring."""
+    token_file = write_mounted_token_file(tmp_path, monkeypatch)
+    settings = {"token_file": str(token_file)}
+    channel = Channel("tester")
+    keyring_mock, _ = keyring(None)
+
+    manager.store(channel, settings)
+
+    assert manager._cache == {channel.canonical_name: (USERNAME, "token")}
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
 def test_token_auth_manager_remove_existing_secret(keyring):
     """
-    Test to make sure that removing a token that exists works.
+    Test to make sure that removing a password that exist works.
     """
     secret = "secret"
     settings = {
@@ -127,59 +165,80 @@ def test_token_auth_manager_remove_existing_secret(keyring):
     }
     channel = Channel("tester")
 
+    # Token secrets always use the fixed token username.
     keyring_mock, _ = keyring(secret)
 
     manager.remove_secret(channel, settings)
 
     assert keyring_mock.delete_password_calls == [
         ("conda-auth::credential::tester", "credential"),
-        ("conda-auth::token::tester", USERNAME),
+        ("conda-auth::token::tester", "token"),
     ]
 
 
-def test_token_auth_manager_remove_non_existing_secret(keyring):
+def test_basic_auth_manager_remove_non_existing_secret(keyring):
     """
-    Test make sure that removing a missing token is best-effort.
+    Test make sure that when removing a secret that does not exist, the appropriate
+    exception and message is raised and shown.
     """
+    secret = "secret"
     settings = {
         "username": USERNAME,
     }
     channel = Channel("tester")
 
-    keyring_mock, _ = keyring(None)
+    # Simulate keyring reporting that the stored token is already missing.
+    keyring_mock, _ = keyring(secret)
+    message = "Secret not found."
+    keyring_mock.delete_password_side_effect = PasswordDeleteError(message)
 
     manager.remove_secret(channel, settings)
 
-    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
+    assert keyring_mock.delete_password_calls == [
+        ("conda-auth::credential::tester", "credential"),
+        ("conda-auth::token::tester", "token"),
+    ]
 
 
-def test_token_auth_handler_with_bearer_token(mocker, keyring):
-    """
-    Test to make sure the default token handler uses a bearer header.
-    """
-    channel_name = "http://localhost"
+@pytest.mark.parametrize(
+    ("channel_name", "expected_header"),
+    (
+        ("channel", "Bearer token"),
+        ("http://localhost", "Bearer token"),
+    ),
+    ids=("default-channel", "bearer"),
+)
+def test_token_auth_handler_sets_authorization_header(
+    monkeypatch,
+    keyring,
+    context_factory,
+    request_factory,
+    channel_name,
+    expected_header,
+):
     token = "token"
     channel = Channel(channel_name)
 
-    context = mocker.MagicMock()
-    context.channel_settings = [{"channel": channel.canonical_name, "auth": TOKEN_NAME}]
-    mocker.patch.object(manager, "_context", context)
-    keyring_mock, _ = keyring(token)
+    # Handler construction reads matching token settings from conda context.
+    context = context_factory([{"channel": channel.canonical_name, "auth": TOKEN_NAME}])
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+    store_token_credential(channel.canonical_name, token)
+    keyring_mock.get_password_calls.clear()
+    keyring_mock.set_password_calls.clear()
 
     auth_handler = TokenAuthHandler(channel_name)
 
-    request = MagicMock()
-    request.headers = {}
+    # requests passes a mutable headers mapping through the auth handler.
+    request = request_factory()
 
     request = auth_handler(request)
 
-    assert request.headers == {"Authorization": f"Bearer {token}"}
+    assert request.headers == {"Authorization": expected_header}
     assert keyring_mock.get_password_calls == [
-        ("conda-auth::credential::http://localhost", "credential"),
-        ("conda-auth::token::http://localhost", USERNAME),
-        ("conda-auth::token::http://localhost", USERNAME),
+        (f"conda-auth::credential::{channel.canonical_name}", "credential")
     ]
-    keyring_mock.set_password.assert_called_once()
+    assert keyring_mock.set_password_calls == []
 
 
 def test_token_auth_handler_sets_custom_token_header(
@@ -206,6 +265,142 @@ def test_token_auth_handler_sets_custom_token_header(
     assert request.headers == {"X-Auth": "Token token"}
 
 
+def test_token_auth_handler_reads_token_file_without_keyring(
+    tmp_path, monkeypatch, keyring, context_factory, request_factory
+):
+    """File-backed token auth reads the mounted secret without touching keyring."""
+    channel_name = "channel"
+    token_file = write_mounted_token_file(tmp_path, monkeypatch)
+    channel = Channel(channel_name)
+
+    context = context_factory(
+        [
+            {
+                "channel": channel.canonical_name,
+                "auth": TOKEN_NAME,
+                "token_file": str(token_file),
+            }
+        ]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+
+    auth_handler = TokenAuthHandler(channel_name)
+    request = auth_handler(request_factory())
+
+    assert request.headers == {"Authorization": "Bearer token"}
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    (
+        ("", "must not be empty"),
+        ("first\nsecond\n", "line breaks"),
+        ("token\u0000", "control characters"),
+    ),
+    ids=("empty", "multi-line", "control-character"),
+)
+def test_token_auth_handler_rejects_invalid_token_file_content(
+    tmp_path, monkeypatch, keyring, context_factory, content, message
+):
+    """File-backed token auth rejects empty or multi-line secret files."""
+    channel_name = "channel"
+    token_file = write_mounted_token_file(tmp_path, monkeypatch, content)
+
+    context = context_factory(
+        [{"channel": channel_name, "auth": TOKEN_NAME, "token_file": str(token_file)}]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+
+    with pytest.raises(CondaAuthError, match=message):
+        TokenAuthHandler(channel_name)
+
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
+def test_token_auth_handler_rejects_relative_token_file(monkeypatch, keyring, context_factory):
+    """Token file paths must be absolute to avoid cwd-dependent secret resolution."""
+    channel_name = "channel"
+
+    context = context_factory(
+        [{"channel": channel_name, "auth": TOKEN_NAME, "token_file": "conda_auth_secret"}]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+
+    with pytest.raises(CondaAuthError, match="path must be absolute"):
+        TokenAuthHandler(channel_name)
+
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
+def test_token_auth_handler_rejects_token_file_outside_secret_root(
+    tmp_path, monkeypatch, keyring, context_factory
+):
+    """Token-file auth is restricted to mounted secret roots."""
+    channel_name = "channel"
+    secret_root = tmp_path / "secrets"
+    secret_root.mkdir()
+    monkeypatch.setenv(TOKEN_FILE_ROOTS_ENV_VAR, str(secret_root))
+    token_file = tmp_path / "conda_auth_secret"
+    token_file.write_text("token\n")
+
+    context = context_factory(
+        [{"channel": channel_name, "auth": TOKEN_NAME, "token_file": str(token_file)}]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+
+    with pytest.raises(CondaAuthError, match="secret mount root"):
+        TokenAuthHandler(channel_name)
+
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
+def test_token_auth_handler_rejects_oversized_token_file(
+    tmp_path, monkeypatch, keyring, context_factory
+):
+    """Token files are bounded to avoid reading arbitrary large files as headers."""
+    channel_name = "channel"
+    token_file = write_mounted_token_file(tmp_path, monkeypatch, "x" * (64 * 1024 + 1))
+
+    context = context_factory(
+        [{"channel": channel_name, "auth": TOKEN_NAME, "token_file": str(token_file)}]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+
+    with pytest.raises(CondaAuthError, match="too large"):
+        TokenAuthHandler(channel_name)
+
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
+def test_token_auth_handler_reports_missing_token_file(monkeypatch, keyring, context_factory):
+    """Missing file-backed token secrets produce an actionable auth error."""
+    channel_name = "channel"
+    token_file = "/run/secrets/does_not_exist"
+
+    context = context_factory(
+        [{"channel": channel_name, "auth": TOKEN_NAME, "token_file": token_file}]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+
+    with pytest.raises(CondaAuthError, match="Unable to read token file"):
+        TokenAuthHandler(channel_name)
+
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
 def test_token_auth_handler_does_not_overwrite_custom_token_header(
     monkeypatch, keyring, context_factory, request_factory
 ):
@@ -229,28 +424,28 @@ def test_token_auth_handler_does_not_overwrite_custom_token_header(
     assert request.headers == {"X-Auth": "existing"}
 
 
-def test_token_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
-    """
-    Test to make sure request-time auth loading only reads keyring once per channel.
-    """
+def test_token_auth_handler_cache_reuses_keyring_secret(monkeypatch, keyring, context_factory):
+    """Request-time auth loading only reads keyring once per channel."""
     channel_name = "http://localhost"
     token = "token"
     channel = Channel(channel_name)
 
-    context = mocker.MagicMock()
-    context.channel_settings = [{"channel": channel.canonical_name, "auth": TOKEN_NAME}]
-    mocker.patch.object(manager, "_context", context)
-    keyring_mock, _ = keyring(token)
+    # Both handler constructions resolve the same token channel setting.
+    context = context_factory([{"channel": channel.canonical_name, "auth": TOKEN_NAME}])
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(None)
+    store_token_credential(channel.canonical_name, token)
+    keyring_mock.get_password_calls.clear()
+    keyring_mock.set_password_calls.clear()
 
+    # The first construction primes the cache. The second should reuse it.
     TokenAuthHandler(channel_name)
     TokenAuthHandler(channel_name)
 
     assert keyring_mock.get_password_calls == [
-        ("conda-auth::credential::http://localhost", "credential"),
-        ("conda-auth::token::http://localhost", USERNAME),
-        ("conda-auth::token::http://localhost", USERNAME),
+        (f"conda-auth::credential::{channel.canonical_name}", "credential")
     ]
-    keyring_mock.set_password.assert_called_once()
+    assert keyring_mock.set_password_calls == []
 
 
 @pytest.mark.parametrize(
@@ -267,6 +462,8 @@ def test_token_auth_handler_rejects_unsupported_transports_before_keyring(
     monkeypatch, keyring, context_factory, channel_name, message
 ):
     """Unsupported transports never receive token credentials."""
+
+    # Transport validation happens before reading the configured keyring token.
     context = context_factory([{"channel": channel_name, "auth": TOKEN_NAME}])
     monkeypatch.setattr(manager, "_context", context)
     keyring_mock, _ = keyring("token")
@@ -274,8 +471,8 @@ def test_token_auth_handler_rejects_unsupported_transports_before_keyring(
     with pytest.raises(CondaAuthError, match=message):
         TokenAuthHandler(channel_name)
 
-    keyring_mock.get_password.assert_not_called()
-    keyring_mock.set_password.assert_not_called()
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
 
 
 def test_token_auth_handler_allows_plaintext_http_when_configured(
@@ -285,22 +482,24 @@ def test_token_auth_handler_allows_plaintext_http_when_configured(
     channel_name = "http://example.com/private-channel"
     token = "token"
 
+    # The opt-in is read from channel_settings at request-auth time.
     context = context_factory(
         [{"channel": channel_name, "auth": TOKEN_NAME, "auth_allow_plaintext_http": "True"}]
     )
     monkeypatch.setattr(manager, "_context", context)
-    keyring_mock, _ = keyring(token)
+    keyring_mock, _ = keyring(None)
+    store_token_credential(channel_name, token)
+    keyring_mock.get_password_calls.clear()
+    keyring_mock.set_password_calls.clear()
 
     auth_handler = TokenAuthHandler(channel_name)
     request = auth_handler(request_factory())
 
     assert request.headers == {"Authorization": f"Bearer {token}"}
     assert keyring_mock.get_password_calls == [
-        ("conda-auth::credential::http://example.com/private-channel", "credential"),
-        ("conda-auth::token::http://example.com/private-channel", USERNAME),
-        ("conda-auth::token::http://example.com/private-channel", USERNAME),
+        ("conda-auth::credential::http://example.com/private-channel", "credential")
     ]
-    keyring_mock.set_password.assert_called_once()
+    assert keyring_mock.set_password_calls == []
 
 
 def test_token_auth_handler_no_token_available_error():
@@ -333,22 +532,18 @@ def test_token_auth_manager_get_auth_type():
     assert manager.get_auth_type() == TOKEN_NAME
 
 
-def test_token_auth_manager_get_secret_loads_from_channel_settings(keyring):
-    """
-    Test to make sure get_secret loads credentials from matching channel settings.
-    """
+def test_token_auth_manager_get_secret_loads_from_channel_settings(keyring, context_factory):
+    """get_secret loads credentials from matching channel settings."""
     channel = "channel"
     token = "token"
 
-    context = MagicMock()
-    context.channels = (channel,)
-    context.channel_settings = [
-        {
-            "channel": channel,
-            "auth": TOKEN_NAME,
-        }
-    ]
-    keyring(token)
+    # The manager resolves token settings from the injected conda context.
+    context = context_factory(
+        [{"channel": channel, "auth": TOKEN_NAME}],
+        channels=(channel,),
+    )
+    keyring(None)
+    store_token_credential(channel, token)
 
     token_manager = TokenAuthManager(context)
 
@@ -410,6 +605,8 @@ def test_token_auth_manager_removes_legacy_keyring_entry(keyring):
             "must only use",
         ),
         ({"token": "token", "token_template": "Token {token}\nX: y"}, "line breaks"),
+        ({"token": "line\nbreak"}, "line breaks"),
+        ({"token": "token\u0000"}, "control characters"),
     ),
     ids=(
         "bad-header",
@@ -418,6 +615,8 @@ def test_token_auth_manager_removes_legacy_keyring_entry(keyring):
         "unknown-field",
         "extra-field",
         "line-break",
+        "token-line-break",
+        "token-control-character",
     ),
 )
 def test_token_auth_manager_rejects_invalid_header_config(keyring, settings, message):

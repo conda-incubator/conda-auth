@@ -6,7 +6,12 @@ from conda.cli.condarc import ConfigurationFile
 
 from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from ..exceptions import CondaAuthError
-from ..handlers.token import TOKEN_HEADER_PARAM_NAME, TOKEN_TEMPLATE_PARAM_NAME
+from ..handlers.token import (
+    TOKEN_FILE_PARAM_NAME,
+    TOKEN_HEADER_PARAM_NAME,
+    TOKEN_PARAM_NAME,
+    TOKEN_TEMPLATE_PARAM_NAME,
+)
 from ..oauth2_client import (
     OAUTH_CLIENT_ID_PARAM_NAME,
     OAUTH_CLIENT_SECRET_PARAM_NAME,
@@ -23,7 +28,8 @@ AUTH_CHANNEL_SETTING_KEYS = frozenset(
         "auth_target",
         "username",
         "password",
-        "token",
+        TOKEN_PARAM_NAME,
+        TOKEN_FILE_PARAM_NAME,
         TOKEN_HEADER_PARAM_NAME,
         TOKEN_TEMPLATE_PARAM_NAME,
         OAUTH_ISSUER_URL_PARAM_NAME,
@@ -46,6 +52,7 @@ def get_updated_channel_settings(
     *,
     auth_target: str | None = None,
     allow_plaintext_http: bool = False,
+    settings: Mapping[str, object] | None = None,
 ) -> list:
     """
     Replace the auth-owned settings for a single channel.
@@ -72,6 +79,14 @@ def get_updated_channel_settings(
     updated_settings["auth_target"] = auth_target or channel
     if username is not None:
         updated_settings["username"] = username
+    if settings is not None:
+        updated_settings.update(
+            {
+                key: value
+                for key, value in settings.items()
+                if value is not None and key not in (TOKEN_PARAM_NAME, "password", "username")
+            }
+        )
     if allow_plaintext_http:
         updated_settings[AUTH_ALLOW_PLAINTEXT_HTTP_PARAM] = True
 
@@ -92,6 +107,7 @@ def update_channel_settings(
     *,
     auth_target: str | None = None,
     allow_plaintext_http: bool = False,
+    settings: Mapping[str, object] | None = None,
 ) -> None:
     """
     Update the user's channel auth settings via conda's configuration file API.
@@ -107,6 +123,7 @@ def update_channel_settings(
         username,
         auth_target=auth_target,
         allow_plaintext_http=allow_plaintext_http,
+        settings=settings,
     )
 
 

@@ -45,6 +45,32 @@ def test_get_updated_channel_settings_preserves_existing_channel_settings():
     ]
 
 
+def test_get_updated_channel_settings_persists_non_secret_token_file_settings():
+    channel_settings = [{"channel": "tester", "ssl_verify": False}]
+
+    assert get_updated_channel_settings(
+        channel_settings,
+        "tester",
+        "token",
+        settings={
+            "token": "secret-token",
+            "token_file": "/run/secrets/conda_auth_secret",
+            "token_header": "X-Auth",
+            "token_template": "Token {token}",
+        },
+    ) == [
+        {
+            "channel": "tester",
+            "ssl_verify": False,
+            "auth": "token",
+            "auth_target": "tester",
+            "token_file": "/run/secrets/conda_auth_secret",
+            "token_header": "X-Auth",
+            "token_template": "Token {token}",
+        },
+    ]
+
+
 def test_get_updated_channel_settings_updates_last_exact_channel():
     channel_settings = [
         {"channel": "tester", "auth": "token", "description": "older"},
@@ -141,6 +167,7 @@ def test_remove_channel_settings_preserves_non_auth_settings():
                     "channel": "tester",
                     "auth": "token",
                     "auth_allow_plaintext_http": True,
+                    "token_file": "/run/secrets/conda_auth_secret",
                     "token_header": "X-Auth",
                     "token_template": "Token {token}",
                     "ssl_verify": False,

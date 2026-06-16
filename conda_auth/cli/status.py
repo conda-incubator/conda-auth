@@ -9,6 +9,7 @@ from conda.common.serialize import json
 from conda.common.url import urlparse as conda_urlparse
 from conda.models.channel import Channel
 
+from ..handlers.token import TOKEN_FILE_PARAM_NAME, TOKEN_NAME
 from ..storage import storage
 
 
@@ -17,7 +18,13 @@ def get_status_entries(target: str | None = None) -> list[dict[str, object]]:
     Return redacted credential status entries.
     """
     entries = []
-    for credential_target in get_status_targets(target):
+    for credential_target, settings in get_status_sources(target):
+        if settings is not None and (
+            entry := get_configured_status_entry(credential_target, settings)
+        ):
+            entries.append(entry)
+            continue
+
         record = storage.get_credential(credential_target)
         if record is not None:
             entries.append(record.to_status_entry())
@@ -28,13 +35,28 @@ def get_status_targets(target: str | None = None) -> tuple[str, ...]:
     """
     Return known configured credential targets for status output.
     """
-    seen = set()
-    targets: list[str] = []
+    return tuple(credential_target for credential_target, _ in get_status_sources(target))
 
-    def add(candidate: str | None) -> None:
+
+def get_status_sources(
+    target: str | None = None,
+) -> tuple[tuple[str, Mapping[str, object] | None], ...]:
+    """
+    Return known configured credential targets and their settings for status output.
+    """
+    seen = set()
+    sources: list[tuple[str, Mapping[str, object] | None]] = []
+    source_indexes: dict[str, int] = {}
+
+    def add(candidate: str | None, settings: Mapping[str, object] | None = None) -> None:
         if candidate is not None and candidate not in seen:
             seen.add(candidate)
-            targets.append(candidate)
+            source_indexes[candidate] = len(sources)
+            sources.append((candidate, settings))
+        elif candidate is not None and settings is not None:
+            index = source_indexes[candidate]
+            if sources[index][1] is None:
+                sources[index] = (candidate, settings)
 
     requested_channel = Channel(target) if target is not None else None
     requested_keys = set()
@@ -56,16 +78,30 @@ def get_status_targets(target: str | None = None) -> tuple[str, ...]:
             auth_target = configured_channel
 
         if requested_channel is None:
-            add(auth_target)
+            add(auth_target, settings)
         elif status_setting_matches_target(
             configured_channel,
             auth_target,
             requested_channel,
             requested_keys,
         ):
-            add(auth_target)
+            add(auth_target, settings)
 
-    return tuple(targets)
+    return tuple(sources)
+
+
+def get_configured_status_entry(
+    target: str,
+    settings: Mapping[str, object],
+) -> dict[str, object] | None:
+    """
+    Return status metadata for configured credentials that do not use secret storage.
+    """
+    if settings.get("auth") != TOKEN_NAME:
+        return None
+    if not isinstance(settings.get(TOKEN_FILE_PARAM_NAME), str):
+        return None
+    return {"target": target, "auth_type": TOKEN_NAME, "source": "token_file"}
 
 
 def status_setting_matches_target(

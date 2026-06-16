@@ -13,7 +13,12 @@ from requests.exceptions import RequestException
 from .credentials import CredentialRecord
 from .exceptions import CondaAuthError
 from .handlers.basic_auth import HTTP_BASIC_AUTH_NAME
-from .handlers.token import DEFAULT_TOKEN_HEADER, DEFAULT_TOKEN_TEMPLATE, TOKEN_NAME
+from .handlers.token import (
+    DEFAULT_TOKEN_HEADER,
+    DEFAULT_TOKEN_TEMPLATE,
+    TOKEN_NAME,
+    validate_token_value,
+)
 from .oauth2_client import OAUTH2_NAME
 
 AUTH_FAILURE_STATUS_CODES = frozenset((401, 403))
@@ -100,6 +105,7 @@ def build_verification_request(record: CredentialRecord) -> VerificationRequest:
     if record.auth_type == TOKEN_NAME:
         if record.token is None:
             raise CondaAuthError("Unable to verify missing token credentials.")
+        validate_token_value(record.token)
         header = record.token_header or DEFAULT_TOKEN_HEADER
         template = record.token_template or DEFAULT_TOKEN_TEMPLATE
         return VerificationRequest(

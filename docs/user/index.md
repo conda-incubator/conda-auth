@@ -95,6 +95,34 @@ listings. Prefer the prompt-based command when working interactively.
 The request handler sends this as `Authorization: Bearer <token>` and does not
 overwrite an existing `Authorization` header.
 
+For Docker, CI, and other headless environments, prefer a file-mounted secret over a
+token passed on the command line:
+
+```
+conda auth login <channel_name> --token-file /run/secrets/conda_auth_secret
+```
+
+This stores only the token file path and non-secret token header metadata in condarc.
+The token value is read from the file when conda accesses the channel, so this mode
+does not require a writable keyring backend. A single trailing newline in the token
+file is ignored, matching how many secret managers write mounted secrets, but empty or
+multi-line token files are rejected. Token file paths must be absolute and are only
+accepted from `/run/secrets` by default.
+
+If your container platform mounts secrets somewhere else, set
+`CONDA_AUTH_TOKEN_FILE_ROOTS` to that mounted secret root. Avoid using this override
+for ordinary host filesystem paths.
+
+For Docker builds, use a BuildKit secret mount instead of `ARG` or `ENV`:
+
+```
+# syntax=docker/dockerfile:1
+RUN --mount=type=secret,id=conda_auth_secret \
+    conda auth login <channel_name> --token-file /run/secrets/conda_auth_secret --verify \
+ && conda install --override-channels -c <channel_name> <package_name> \
+ && conda auth logout <channel_name>
+```
+
 For services that expect a different token header, customize the header name and
 value template:
 
@@ -215,7 +243,7 @@ access tokens, or refresh tokens.
 ### Credential storage
 
 conda-auth relies on the [keyring](https://github.com/jaraco/keyring) package to store
-passwords and secrets. Keyring is the only production write backend; conda-auth does
+passwords and secrets. Keyring is the only production write backend. conda-auth does
 not add a plaintext auth file backend or implicit `.netrc` fallback.
 
 #### Storage backend unavailable?
@@ -235,6 +263,10 @@ This method stores passwords and secrets in a plain text file on the filesystem 
 production usage. Please read the [project's README](https://github.com/jaraco/keyrings.alt) for more
 information.
 ```
+
+For containerized token authentication, prefer `--token-file` with Docker or CI secret
+mounts instead of adding a plaintext keyring fallback. By default, token files are
+only accepted from `/run/secrets`.
 
 For more storage and platform details, see the [FAQ](faq.md).
 
