@@ -16,8 +16,11 @@ conda command.
 ## Does conda-auth store secrets in `.condarc`?
 
 No. Conda configuration stores non-secret metadata such as the auth type, auth target,
-and token header settings. Passwords, tokens, OAuth refresh tokens, and proxy
-passwords are stored in the operating system keyring.
+token header settings, and optional token file paths. Passwords, inline tokens, OAuth
+refresh tokens, and proxy passwords are stored in the operating system keyring.
+
+For `--token-file`, conda-auth stores only the file path in configuration and reads
+the token value from that file when conda accesses the channel.
 
 ## Which authentication methods are supported?
 
@@ -76,10 +79,24 @@ can be provided non-interactively. Be careful with secrets on command lines beca
 they may be visible in shell history or process listings. Prefer prompts or your
 automation platform's secret injection when possible.
 
+For Docker and CI systems that can mount secrets as files, prefer:
+
+```
+conda auth login <channel> --token-file /run/secrets/conda_auth_secret
+```
+
+This stores only the file path in conda configuration. The token is read at request
+time, which avoids command-line exposure and does not require a writable keyring
+backend. Use an absolute path to the mounted secret file. `/run/secrets` is accepted
+by default.
+
 ## What does `conda auth status` show?
 
 `conda auth status` shows redacted metadata for configured credentials. It does not
 print passwords, bearer tokens, OAuth access tokens, or OAuth refresh tokens.
+
+For token-file credentials, status shows that the credential source is `token_file`
+without printing the token value.
 
 ## Will conda-auth migrate older keyring entries?
 
@@ -105,6 +122,11 @@ systems, keyring may not find a secure backend.
 Installing `keyrings.alt` can make a backend available, but its common file backend
 stores secrets in plaintext. That is useful for tests and some constrained
 environments, but it may not be acceptable for production usage.
+
+For containerized token authentication, use `--token-file` with your container or CI
+secret mount instead of a plaintext keyring fallback. By default, conda-auth only
+accepts token files from `/run/secrets`. Set `CONDA_AUTH_TOKEN_FILE_ROOTS` only when
+your container platform mounts secrets somewhere else.
 
 ## Did conda-auth lose my credentials after a Python update on macOS?
 
