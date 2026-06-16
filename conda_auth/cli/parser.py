@@ -5,7 +5,11 @@ import argparse
 from conda.cli.helpers import add_parser_json
 
 from ..constants import PROXY_COMMAND_NAME
-from ..handlers.token import TOKEN_HEADER_PARAM_NAME, TOKEN_TEMPLATE_PARAM_NAME
+from ..handlers.token import (
+    TOKEN_FILE_PARAM_NAME,
+    TOKEN_HEADER_PARAM_NAME,
+    TOKEN_TEMPLATE_PARAM_NAME,
+)
 from ..oauth2_client import OAUTH_SCOPE_PARAM_NAME
 
 PROMPT_VALUE = object()
@@ -64,7 +68,7 @@ def add_token_options(parser: argparse.ArgumentParser) -> None:
         "--header-template",
         dest=TOKEN_TEMPLATE_PARAM_NAME,
         metavar="TEMPLATE",
-        help="Header value template; must include '{token}'",
+        help="Header value template. Must include '{token}'",
     )
 
 
@@ -113,6 +117,12 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         help="Bearer token to use in the Authorization header",
     )
     auth_options.add_argument(
+        "--token-file",
+        dest=TOKEN_FILE_PARAM_NAME,
+        metavar="PATH",
+        help="Read bearer token from a mounted secret file, under /run/secrets by default",
+    )
+    auth_options.add_argument(
         "--oauth2",
         action="store_true",
         help="Use OAuth 2.0/OIDC authentication",
@@ -159,7 +169,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     proxy_logout.add_argument("proxy_key", help="proxy_servers key, for example 'http'")
     proxy_logout.add_argument(
         "--proxy-url",
-        help="Proxy URL for the stored credential; defaults to configured proxy_servers",
+        help="Proxy URL for the stored credential. Defaults to configured proxy_servers",
     )
     add_parser_json(proxy_logout)
 
@@ -167,7 +177,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     proxy_status.add_argument("proxy_key", nargs="?")
     proxy_status.add_argument(
         "--proxy-url",
-        help="Proxy URL for the stored credential; defaults to configured proxy_servers",
+        help="Proxy URL for the stored credential. Defaults to configured proxy_servers",
     )
     add_parser_json(proxy_status)
 

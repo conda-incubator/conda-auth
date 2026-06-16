@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 
 import pytest
@@ -6,25 +8,20 @@ from conda.models.channel import Channel
 from conda_auth.cli import auth
 from conda_auth.cli.status import channel_matches, get_status_targets
 from conda_auth.credentials import CredentialRecord
-from conda_auth.storage.keyring import KeyringStorage
+from conda_auth.storage import storage
 
 
-def test_status_lists_configured_stored_credentials(monkeypatch, runner, keyring, context_factory):
-    """
-    Status lists records that are both configured and present in storage.
-    """
+def test_status_json_lists_redacted_configured_credentials(
+    monkeypatch, runner, keyring, condarc, context_factory
+):
+    """Status uses configured auth targets and does not expose stored token values."""
     keyring(None)
+
+    login_result = runner.invoke(auth, ["login", "tester", "--token", "secret-token"])
+    assert login_result.exit_code == 0, login_result.output
     monkeypatch.setattr(
         "conda_auth.cli.status.context",
-        context_factory([{"channel": "tester", "auth": "token", "auth_target": "tester"}]),
-    )
-    KeyringStorage().set_credential(
-        CredentialRecord(
-            target="tester",
-            auth_type="token",
-            username="token",
-            token="secret-token",
-        )
+        context_factory(condarc.content["channel_settings"]),
     )
 
     result = runner.invoke(auth, ["status", "--json"])
@@ -32,20 +29,23 @@ def test_status_lists_configured_stored_credentials(monkeypatch, runner, keyring
     assert result.exit_code == 0, result.output
     assert json.loads(result.output) == {
         "success": True,
-        "credentials": [{"target": "tester", "auth_type": "token", "username": "token"}],
+        "credentials": [
+            {
+                "target": "tester",
+                "auth_type": "token",
+                "username": "token",
+            }
+        ],
     }
+    assert "secret-token" not in result.output
 
 
-def test_status_does_not_list_unconfigured_storage_records(
-    monkeypatch, runner, keyring, context_factory
-):
-    """
-    Status derives listable targets from conda auth config, not secret enumeration.
-    """
+def test_status_text_handles_empty_storage(runner, keyring, context_factory, monkeypatch):
+    """Text status output handles missing configured credentials."""
     keyring(None)
-    monkeypatch.setattr("conda_auth.cli.status.context", context_factory())
-    KeyringStorage().set_credential(
-        CredentialRecord(target="tester", auth_type="token", token="secret-token")
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory([{"channel": "tester", "auth": "token", "auth_target": "tester"}]),
     )
 
     result = runner.invoke(auth, ["status"])
@@ -54,17 +54,56 @@ def test_status_does_not_list_unconfigured_storage_records(
     assert result.output == "No credentials stored\n"
 
 
-def test_status_skips_configured_credentials_without_stored_record(
-    monkeypatch, runner, keyring, context_factory
+def test_status_lists_configured_token_file_without_keyring(
+    runner, keyring, context_factory, monkeypatch
 ):
-    """
-    Configured auth without an available secret is not reported as stored.
-    """
-    keyring(None)
+    """Status can report file-backed token auth without enumerating keyring secrets."""
+    keyring_mock, _ = keyring(None)
     monkeypatch.setattr(
         "conda_auth.cli.status.context",
-        context_factory([{"channel": "tester", "auth": "token", "auth_target": "tester"}]),
+        context_factory(
+            [
+                {
+                    "channel": "tester",
+                    "auth": "token",
+                    "auth_target": "tester",
+                    "token_file": "/run/secrets/conda_auth_secret",
+                }
+            ]
+        ),
     )
+
+    result = runner.invoke(auth, ["status", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "success": True,
+        "credentials": [
+            {
+                "target": "tester",
+                "auth_type": "token",
+                "source": "token_file",
+            }
+        ],
+    }
+    assert "secret-token" not in result.output
+    assert keyring_mock.get_password_calls == []
+
+
+def test_status_does_not_list_unconfigured_credentials(
+    runner, keyring, monkeypatch, context_factory
+):
+    """Storage records are hidden from status when no auth setting references them."""
+    keyring(None)
+    storage.set_credential(
+        CredentialRecord(
+            target="tester",
+            auth_type="token",
+            username="token",
+            token="secret-token",
+        )
+    )
+    monkeypatch.setattr("conda_auth.cli.status.context", context_factory())
 
     result = runner.invoke(auth, ["status", "--json"])
 
@@ -72,38 +111,47 @@ def test_status_skips_configured_credentials_without_stored_record(
     assert json.loads(result.output) == {"success": True, "credentials": []}
 
 
-def test_status_explicit_target_matches_configured_auth_target(
-    monkeypatch, runner, keyring, context_factory
+def test_status_explicit_target_uses_matching_configured_auth_target(
+    runner, keyring, monkeypatch, context_factory
 ):
-    """
-    Explicit status can resolve records through a configured auth_target.
-    """
+    """Explicit status targets can resolve to a configured wildcard auth target."""
     keyring(None)
-    monkeypatch.setattr(
-        "conda_auth.cli.status.context",
-        context_factory(
-            [
-                {
-                    "channel": "https://example.com/private/*",
-                    "auth": "token",
-                    "auth_target": "https://example.com/private",
-                }
-            ]
-        ),
-    )
-    KeyringStorage().set_credential(
+    storage.set_credential(
         CredentialRecord(
-            target="https://example.com/private",
+            target="https://repo.example.com/*",
             auth_type="token",
             username="token",
             token="secret-token",
         )
     )
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory(
+            [
+                {
+                    "channel": "https://repo.example.com/*",
+                    "auth": "token",
+                    "auth_target": "https://repo.example.com/*",
+                }
+            ]
+        ),
+    )
 
-    result = runner.invoke(auth, ["status", "https://example.com/private/osx-arm64"])
+    result = runner.invoke(auth, ["status", "https://repo.example.com/private", "--json"])
 
     assert result.exit_code == 0, result.output
-    assert result.output == "https://example.com/private: token\n"
+    assert json.loads(result.output) == {
+        "success": True,
+        "credentials": [
+            {
+                "target": "https://repo.example.com/*",
+                "auth_type": "token",
+                "username": "token",
+            }
+        ],
+    }
+
+
 def test_status_targets_skip_invalid_settings(monkeypatch, context_factory):
     """
     Status ignores unrelated and malformed channel settings.
@@ -154,7 +202,7 @@ def test_status_displays_credential_expiration(
         "conda_auth.cli.status.context",
         context_factory([{"channel": "tester", "auth": "oauth2", "auth_target": "tester"}]),
     )
-    KeyringStorage().set_credential(
+    storage.set_credential(
         CredentialRecord(
             target="tester",
             auth_type="oauth2",
