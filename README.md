@@ -38,6 +38,17 @@ conda auth login https://example.com/my-protected-channel --token
 conda auth login https://example.com/my-protected-channel --token --header X-Auth --token-template 'Token {token}'
 ```
 
+**Log in** using a token mounted as a Docker or CI secret file:
+
+```
+conda auth login https://example.com/my-protected-channel --token-file /run/secrets/conda_auth_secret
+```
+
+This stores only the secret file path and non-secret token header metadata in
+`.condarc`. The token value is read from the file when conda accesses the channel,
+so no keyring backend is required for this mode. Token file paths must be absolute and
+are only accepted from `/run/secrets` by default.
+
 **Log in** to a channel whose operator provides OAuth 2.0/OIDC defaults:
 
 ```
@@ -76,6 +87,24 @@ conda auth logout https://example.com/my-protected-channel
 The login commands prompt for secrets by default. Passing passwords or tokens directly
 on the command line is supported for non-interactive automation, but may expose them in
 shell history or process listings.
+
+For Docker builds and containers, prefer file-mounted secrets over environment
+variables or plaintext credential files. Token files must be absolute and are only
+accepted from `/run/secrets` by default:
+
+```
+# syntax=docker/dockerfile:1
+RUN --mount=type=secret,id=conda_auth_secret \
+    conda auth login https://example.com/my-protected-channel \
+      --token-file /run/secrets/conda_auth_secret \
+      --verify \
+ && conda install --override-channels -c https://example.com/my-protected-channel my-package \
+ && conda auth logout https://example.com/my-protected-channel
+```
+
+If your container platform mounts secrets somewhere else, set
+`CONDA_AUTH_TOKEN_FILE_ROOTS` to that mounted secret root. Avoid using this override
+for ordinary host filesystem paths.
 
 conda-auth sends credentials only to HTTP(S) channel services. HTTPS is required for
 remote channels by default. For an explicitly trusted plaintext HTTP channel, opt in

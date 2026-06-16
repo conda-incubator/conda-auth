@@ -39,7 +39,12 @@ class BasicAuthManager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for the credentials.
         """
-        record = self.get_credential_record(channel, settings)
+        record = None
+        if not all(
+            isinstance(settings.get(name), str)
+            for name in (USERNAME_PARAM_NAME, PASSWORD_PARAM_NAME)
+        ):
+            record = self.get_credential_record(channel, settings)
         username = self.get_username(settings, record)
         password = self.get_password(username, settings, record)
 
