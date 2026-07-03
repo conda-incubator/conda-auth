@@ -6,6 +6,7 @@ from fnmatch import fnmatch
 
 import conda.base.context
 from conda.base.context import context as global_context
+from conda.common.url import urlparse as conda_urlparse
 from conda.models.channel import Channel
 
 from ..storage import storage
@@ -90,6 +91,8 @@ class AuthManager(ABC):
             if settings.get("auth") != self.get_auth_type():
                 continue
             if configured_channel := settings.get("channel"):
+                if not isinstance(configured_channel, str):
+                    continue
                 if self.channel_matches(configured_channel, channel):
                     matched_settings = settings
 
@@ -97,16 +100,19 @@ class AuthManager(ABC):
 
     def channel_matches(self, configured_channel: str, channel: Channel) -> bool:
         """
-        Match configured channel names using conda's canonical channel names.
+        Match configured channel names the same way conda selects auth handlers.
         """
-        configured_canonical_name = Channel(configured_channel).canonical_name
+        if configured_channel == channel.canonical_name:
+            return True
 
-        return (
-            configured_channel == channel.canonical_name
-            or configured_canonical_name == channel.canonical_name
-            or fnmatch(channel.canonical_name, configured_channel)
-            or fnmatch(channel.canonical_name, configured_canonical_name)
-        )
+        parsed_channel = conda_urlparse(channel.base_url)
+        parsed_setting = conda_urlparse(configured_channel)
+        if parsed_setting.scheme != parsed_channel.scheme:
+            return False
+
+        channel_url = parsed_channel.netloc + parsed_channel.path
+        pattern = parsed_setting.netloc + parsed_setting.path
+        return fnmatch(channel_url, pattern)
 
     def cache_clear(self, channel_name: str | None = None) -> None:
         """

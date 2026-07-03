@@ -313,3 +313,56 @@ def test_basic_auth_manager_get_secret_loads_from_channel_settings(keyring):
 
     assert auth_manager.get_secret(channel) == (username, password)
     assert auth_manager._cache == {channel: (username, password)}
+
+
+@pytest.mark.parametrize(
+    ("configured_channel", "channel_name", "expected"),
+    (
+        ("conda-forge", "conda-forge", True),
+        ("https://repo.example.com/private", "https://repo.example.com/private", True),
+        ("https://repo.example.com/*", "https://repo.example.com/private", True),
+        ("http://repo.example.com/*", "https://repo.example.com/private", False),
+        ("*", "https://repo.example.com/private", False),
+    ),
+    ids=("named-exact", "url-exact", "url-pattern", "scheme-mismatch", "schemeless-glob"),
+)
+def test_basic_auth_manager_channel_matches_like_conda(configured_channel, channel_name, expected):
+    """Channel matching follows conda's auth-handler lookup rules."""
+    auth_manager = BasicAuthManager()
+
+    assert auth_manager.channel_matches(configured_channel, Channel(channel_name)) is expected
+
+
+def test_basic_auth_manager_get_channel_settings_uses_last_matching_setting():
+    """Matching settings use conda's last-match-wins behavior."""
+    channel_name = "https://repo.example.com/private"
+    context = MagicMock()
+    context.channel_settings = [
+        {
+            "channel": channel_name,
+            "auth": HTTP_BASIC_AUTH_NAME,
+            "username": "exact",
+        },
+        {
+            "channel": 1,
+            "auth": HTTP_BASIC_AUTH_NAME,
+            "username": "invalid",
+        },
+        {
+            "channel": "https://repo.example.com/*",
+            "auth": HTTP_BASIC_AUTH_NAME,
+            "username": "wildcard",
+        },
+        {
+            "channel": "*",
+            "auth": HTTP_BASIC_AUTH_NAME,
+            "username": "schemeless",
+        },
+    ]
+    auth_manager = BasicAuthManager(context)
+
+    assert auth_manager.get_channel_settings(Channel(channel_name)) == {
+        "channel": "https://repo.example.com/*",
+        "auth": HTTP_BASIC_AUTH_NAME,
+        "username": "wildcard",
+    }
