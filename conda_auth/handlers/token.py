@@ -130,6 +130,8 @@ class TokenAuthManager(AuthManager):
             record = self.create_credential_record(channel, USERNAME, token, settings)
             if record.target != target:
                 record = replace(record, target=target)
+            backend.set_credential(record)
+            backend.delete_legacy_password(TOKEN_NAME, legacy_target, USERNAME)
             return record
 
         return None

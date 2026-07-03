@@ -1,10 +1,14 @@
 import json
 
+import pytest
 from conda.exceptions import CondaError
+from keyring.errors import PasswordDeleteError
 
 from conda_auth.cli import SUCCESSFUL_LOGOUT_MESSAGE, auth
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME, manager
+from conda_auth.handlers.token import TOKEN_NAME
+from conda_auth.handlers.token import manager as token_manager
 
 
 def test_logout_of_active_session(mocker, runner, keyring, condarc):
@@ -108,6 +112,57 @@ def test_logout_does_not_remove_secret_when_condarc_update_fails(mocker, runner,
     assert exc_type == CondaAuthError
     assert "Could not save file" == exception.message
     keyring_mock.delete_password.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("args", "json_output"),
+    (
+        (["logout", "tester"], False),
+        (["logout", "tester", "--json"], True),
+    ),
+    ids=("text", "json"),
+)
+def test_logout_succeeds_when_keyring_delete_is_denied(
+    monkeypatch, runner, keyring, condarc, context_factory, args, json_output
+):
+    channel_name = "tester"
+
+    keyring_mock, _ = keyring("secret-token")
+    keyring_mock.delete_password_side_effect = PasswordDeleteError(
+        "Can't delete password in keychain: (-25244, 'Unknown Error')"
+    )
+    monkeypatch.setattr(
+        "conda_auth.cli.channel.context",
+        context_factory([{"channel": channel_name, "auth": TOKEN_NAME}]),
+    )
+    condarc.content = {"channel_settings": [{"channel": channel_name, "auth": TOKEN_NAME}]}
+    monkeypatch.setattr(token_manager, "_cache", {channel_name: ("token", "secret-token")})
+
+    with pytest.warns(RuntimeWarning) as warnings:
+        result = runner.invoke(auth, args)
+
+    assert result.exit_code == 0, result.output
+    warning_messages = [str(warning.message) for warning in warnings]
+    assert any(
+        "Unable to delete credential for 'tester'" in message for message in warning_messages
+    )
+    assert any(
+        "Unable to delete legacy credential for 'tester'" in message
+        for message in warning_messages
+    )
+    if json_output:
+        assert json.loads(result.stdout) == {
+            "success": True,
+            "message": SUCCESSFUL_LOGOUT_MESSAGE,
+        }
+    else:
+        assert SUCCESSFUL_LOGOUT_MESSAGE in result.output
+    assert keyring_mock.delete_password_calls == [
+        (f"conda-auth::credential::{channel_name}", "credential"),
+        (f"conda-auth::{TOKEN_NAME}::{channel_name}", "token"),
+    ]
+    assert channel_name not in token_manager._cache
+    assert condarc.content == {"channel_settings": []}
 
 
 def test_logout_refuses_when_auth_settings_are_not_in_user_condarc(
