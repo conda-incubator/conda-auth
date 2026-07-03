@@ -18,6 +18,7 @@ from conda_auth.handlers.basic_auth import (
     manager,
 )
 from conda_auth.handlers.token import TOKEN_NAME
+from conda_auth.storage.keyring import KeyringStorage
 
 
 @pytest.fixture(autouse=True)
@@ -147,6 +148,34 @@ def test_basic_auth_manager_with_previous_secret(keyring):
     assert manager._cache == {channel.canonical_name: ("admin", secret)}
 
 
+def test_basic_auth_manager_migrates_legacy_keyring_entry(keyring, context_factory):
+    """Old basic-auth keyring entries are rewritten as structured records on first use."""
+    channel = "channel"
+    username = "admin"
+    password = "legacy-password"
+
+    context = context_factory(
+        [{"channel": channel, "auth": HTTP_BASIC_AUTH_NAME, "username": username}],
+        channels=(channel,),
+    )
+    keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[(f"conda-auth::{HTTP_BASIC_AUTH_NAME}::{channel}", username)] = password
+
+    basic_auth_manager = BasicAuthManager(context)
+
+    assert basic_auth_manager.get_secret(channel) == (username, password)
+    assert KeyringStorage().get_credential(channel) == CredentialRecord(
+        target=channel,
+        auth_type=HTTP_BASIC_AUTH_NAME,
+        username=username,
+        password=password,
+    )
+    assert (
+        f"conda-auth::{HTTP_BASIC_AUTH_NAME}::{channel}",
+        username,
+    ) not in keyring_mock.secrets
+
+
 def test_basic_auth_manager_get_secret_cache_exists(keyring):
     """
     Test to make sure that everything works as expected when a cache entry
@@ -208,6 +237,23 @@ def test_basic_auth_manager_remove_existing_secret_no_username(keyring):
     assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
+def test_basic_auth_manager_removes_legacy_keyring_entry(keyring):
+    """Logout cleanup also removes old basic-auth keyring entries."""
+    username = "username"
+    channel = Channel("tester")
+    keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[
+        (f"conda-auth::{HTTP_BASIC_AUTH_NAME}::{channel.canonical_name}", username)
+    ] = "legacy-password"
+
+    manager.remove_secret(channel, {"username": username})
+
+    assert (
+        f"conda-auth::{HTTP_BASIC_AUTH_NAME}::{channel.canonical_name}",
+        username,
+    ) not in keyring_mock.secrets
+
+
 def test_basic_auth_manager_remove_non_existing_secret(keyring):
     """
     Test make sure that when removing a secret that does not exist, the appropriate
@@ -258,8 +304,9 @@ def test_basic_auth_handler(mocker, keyring):
     assert keyring_mock.get_password_calls == [
         ("conda-auth::credential::channel", "credential"),
         ("conda-auth::http-basic::channel", username),
+        ("conda-auth::http-basic::channel", username),
     ]
-    keyring_mock.set_password.assert_not_called()
+    keyring_mock.set_password.assert_called_once()
 
 
 def test_basic_auth_handler_preserves_existing_authorization(
@@ -335,8 +382,9 @@ def test_basic_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
     assert keyring_mock.get_password_calls == [
         ("conda-auth::credential::channel", "credential"),
         ("conda-auth::http-basic::channel", username),
+        ("conda-auth::http-basic::channel", username),
     ]
-    keyring_mock.set_password.assert_not_called()
+    keyring_mock.set_password.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -401,8 +449,9 @@ def test_basic_auth_handler_allows_plaintext_http_when_configured(
     assert keyring_mock.get_password_calls == [
         ("conda-auth::credential::http://example.com/private-channel", "credential"),
         ("conda-auth::http-basic::http://example.com/private-channel", username),
+        ("conda-auth::http-basic::http://example.com/private-channel", username),
     ]
-    keyring_mock.set_password.assert_not_called()
+    keyring_mock.set_password.assert_called_once()
 
 
 def test_basic_auth_handler_partial_cache_error():
