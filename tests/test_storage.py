@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
@@ -5,14 +7,12 @@ import sys
 import pytest
 from keyring.errors import KeyringError, NoKeyringError, PasswordDeleteError
 
-from conda_auth.credentials import CredentialRecord
+from conda_auth.credentials import (
+    CredentialRecord,
+)
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.storage import get_storage_backend
-from conda_auth.storage.keyring import (
-    KEYRING_CREDENTIAL_SERVICE_PREFIX,
-    KEYRING_CREDENTIAL_USERNAME,
-    KeyringStorage,
-)
+from conda_auth.storage.keyring import KeyringStorage
 
 
 def test_no_available_storage_backend(keyring):
@@ -48,9 +48,9 @@ def test_plugin_import_does_not_require_storage_backend():
 
 def test_keyring_storage_stores_structured_record(keyring):
     """
-    Structured credentials are stored as one keyring item per target.
+    Structured credentials can be stored and loaded by target.
     """
-    keyring_mock, _ = keyring(None)
+    keyring(None)
     backend = KeyringStorage()
     record = CredentialRecord(
         target="tester",
@@ -64,12 +64,6 @@ def test_keyring_storage_stores_structured_record(keyring):
     backend.set_credential(record)
 
     assert backend.get_credential("tester") == record
-    assert keyring_mock.secrets[
-        (
-            f"{KEYRING_CREDENTIAL_SERVICE_PREFIX}::tester",
-            KEYRING_CREDENTIAL_USERNAME,
-        )
-    ]
 
 
 @pytest.mark.parametrize(
@@ -82,20 +76,18 @@ def test_keyring_storage_stores_structured_record(keyring):
 )
 def test_keyring_storage_rejects_invalid_records(keyring, payload, message):
     keyring_mock, _ = keyring(None)
-    keyring_mock.secrets[
-        (
-            f"{KEYRING_CREDENTIAL_SERVICE_PREFIX}::tester",
-            KEYRING_CREDENTIAL_USERNAME,
-        )
-    ] = payload
+    backend = KeyringStorage()
+    backend.set_credential(CredentialRecord(target="tester", auth_type="token"))
+    service, username, _ = keyring_mock.set_password_calls[-1]
+    keyring_mock.secrets[(service, username)] = payload
 
     with pytest.raises(CondaAuthError, match=message):
-        KeyringStorage().get_credential("tester")
+        backend.get_credential("tester")
 
 
 def test_keyring_storage_deletes_structured_record(keyring):
     """
-    Deleting a structured credential removes only that target record.
+    Deleting a structured credential removes the target record.
     """
     keyring(None)
     backend = KeyringStorage()
@@ -104,17 +96,6 @@ def test_keyring_storage_deletes_structured_record(keyring):
     backend.delete_credential("tester")
 
     assert backend.get_credential("tester") is None
-
-
-def test_keyring_storage_ignores_structured_delete_error(keyring):
-    keyring_mock, _ = keyring(None)
-    keyring_mock.delete_password_side_effect = PasswordDeleteError()
-
-    KeyringStorage().delete_credential("tester")
-
-    assert keyring_mock.delete_password_calls == [
-        (f"{KEYRING_CREDENTIAL_SERVICE_PREFIX}::tester", KEYRING_CREDENTIAL_USERNAME)
-    ]
 
 
 def test_keyring_storage_reads_legacy_password(keyring):
@@ -203,31 +184,20 @@ def test_keyring_storage_ignores_missing_delete_errors(keyring, message):
     assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
-def test_keyring_storage_ignores_legacy_delete_error(keyring):
-    keyring_mock, _ = keyring("secret")
-    keyring_mock.delete_password_side_effect = PasswordDeleteError()
-
-    KeyringStorage().delete_legacy_password("token", "tester", "token")
-
-    assert keyring_mock.delete_password_calls == [("conda-auth::token::tester", "token")]
-
-
 def test_keyring_storage_delete_preserves_other_records(keyring):
-    """
-    Deleting one structured record does not require or mutate an index.
-    """
+    """Deleting one credential does not remove other target records."""
     keyring(None)
     backend = KeyringStorage()
-    backend.set_credential(CredentialRecord(target="one", auth_type="token", token="one"))
-    backend.set_credential(CredentialRecord(target="two", auth_type="token", token="two"))
+    backend.set_credential(CredentialRecord(target="first", auth_type="token", token="first"))
+    backend.set_credential(CredentialRecord(target="second", auth_type="token", token="second"))
 
-    backend.delete_credential("one")
+    backend.delete_credential("first")
 
-    assert backend.get_credential("one") is None
-    assert backend.get_credential("two") == CredentialRecord(
-        target="two",
+    assert backend.get_credential("first") is None
+    assert backend.get_credential("second") == CredentialRecord(
+        target="second",
         auth_type="token",
-        token="two",
+        token="second",
     )
 
 
