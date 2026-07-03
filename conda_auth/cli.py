@@ -33,6 +33,15 @@ SUCCESSFUL_LOGOUT_MESSAGE = "Successfully removed credentials"
 
 PROMPT_VALUE = object()
 
+AUTH_CHANNEL_SETTING_KEYS = frozenset(
+    (
+        "auth",
+        "username",
+        "password",
+        "token",
+    )
+)
+
 
 def prompt_text(prompt: str) -> str:
     """
@@ -65,17 +74,37 @@ def get_updated_channel_settings(
     username: str | None = None,
 ) -> list:
     """
-    Replace the auth settings for a single channel.
+    Replace the auth-owned settings for a single channel.
     """
-    updated_settings = {"channel": channel, "auth": auth_type}
+    updated_settings: dict[str, object] = {"channel": channel}
+    last_channel_index = next(
+        (
+            index
+            for index, settings in reversed(list(enumerate(channel_settings)))
+            if isinstance(settings, Mapping) and settings.get("channel") == channel
+        ),
+        None,
+    )
+    if last_channel_index is not None:
+        updated_settings.update(
+            {
+                key: value
+                for key, value in channel_settings[last_channel_index].items()
+                if key not in AUTH_CHANNEL_SETTING_KEYS
+            }
+        )
+
+    updated_settings["auth"] = auth_type
     if username is not None:
         updated_settings["username"] = username
 
+    if last_channel_index is None:
+        return [*channel_settings, updated_settings]
+
     return [
-        settings
-        for settings in channel_settings
-        if not isinstance(settings, Mapping) or settings.get("channel") != channel
-    ] + [updated_settings]
+        updated_settings if index == last_channel_index else settings
+        for index, settings in enumerate(channel_settings)
+    ]
 
 
 def update_channel_settings(
@@ -99,7 +128,7 @@ def update_channel_settings(
     )
 
 
-def remove_channel_settings(config: ConfigurationFile, channel: str) -> None:
+def remove_channel_settings(config: ConfigurationFile, channel: str) -> bool:
     """
     Remove the user's channel auth settings via conda's configuration file API.
     """
@@ -107,11 +136,24 @@ def remove_channel_settings(config: ConfigurationFile, channel: str) -> None:
     if not isinstance(channel_settings, list):
         raise CondaAuthError("Expected 'channel_settings' to be a list")
 
-    config.content["channel_settings"] = [
-        settings
-        for settings in channel_settings
-        if not isinstance(settings, Mapping) or settings.get("channel") != channel
-    ]
+    removed_auth_settings = False
+    updated_channel_settings = []
+    for settings in channel_settings:
+        if not isinstance(settings, Mapping) or settings.get("channel") != channel:
+            updated_channel_settings.append(settings)
+            continue
+
+        removed_auth_settings = removed_auth_settings or any(
+            key in settings for key in AUTH_CHANNEL_SETTING_KEYS
+        )
+        updated_settings = {
+            key: value for key, value in settings.items() if key not in AUTH_CHANNEL_SETTING_KEYS
+        }
+        if updated_settings != {"channel": channel}:
+            updated_channel_settings.append(updated_settings)
+
+    config.content["channel_settings"] = updated_channel_settings
+    return removed_auth_settings
 
 
 def get_auth_manager(
@@ -192,7 +234,12 @@ def logout(channel: Channel):
 
     try:
         with ConfigurationFile.from_user_condarc() as config:
-            remove_channel_settings(config, channel.canonical_name)
+            removed_auth_settings = remove_channel_settings(config, channel.canonical_name)
+            if not removed_auth_settings:
+                raise CondaAuthError(
+                    "Unable to remove authentication settings from the user condarc. "
+                    "Remove them from the configuration source where they are defined."
+                )
     except (CondaError, OSError, yaml.YAMLError) as exc:
         raise CondaAuthError(str(exc))
 
