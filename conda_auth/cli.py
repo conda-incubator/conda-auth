@@ -274,13 +274,13 @@ def auth(args: argparse.Namespace) -> None:
         token = args.token
 
         if not args.basic and token is None:
-            args.parser.error("Missing option 'basic' / 'token'.")
+            raise CondaAuthError("Missing option 'basic' / 'token'.")
 
         if token is not None:
             if args.username is not None:
-                args.parser.error("Option 'username' cannot be used with 'token'")
+                raise CondaAuthError("Option 'username' cannot be used with 'token'")
             if args.password is not None:
-                args.parser.error("Option 'password' cannot be used with 'token'")
+                raise CondaAuthError("Option 'password' cannot be used with 'token'")
             if token is PROMPT_VALUE:
                 token = prompt_secret("Token: ")
             login(Channel(args.channel), token=token)
