@@ -25,7 +25,12 @@ def test_logout_of_active_session(mocker, runner, keyring, condarc):
     manager._cache = {channel_name: (username, secret)}
     condarc.content = {
         "channel_settings": [
-            {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username},
+            {
+                "channel": channel_name,
+                "auth": HTTP_BASIC_AUTH_NAME,
+                "username": username,
+                "ssl_verify": False,
+            },
             {"channel": "other", "auth": "token"},
         ]
     }
@@ -43,6 +48,7 @@ def test_logout_of_active_session(mocker, runner, keyring, condarc):
     assert channel_name not in manager._cache
     assert condarc.content == {
         "channel_settings": [
+            {"channel": channel_name, "ssl_verify": False},
             {"channel": "other", "auth": "token"},
         ]
     }
@@ -103,6 +109,31 @@ def test_logout_does_not_remove_secret_when_condarc_update_fails(mocker, runner,
     assert exc_type == CondaAuthError
     assert "Could not save file" == exception.message
     keyring_mock.delete_password.assert_not_called()
+
+
+def test_logout_refuses_when_auth_settings_are_not_in_user_condarc(
+    mocker, runner, keyring, condarc
+):
+    channel_name = "tester"
+    username = "user"
+
+    # Active auth can come from system or environment config, not just the user condarc.
+    mock_context = mocker.patch("conda_auth.cli.context")
+    keyring_mock, _ = keyring("password")
+    mock_context.channel_settings = [
+        {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+    ]
+    condarc.content = {"channel_settings": [{"channel": channel_name, "ssl_verify": False}]}
+
+    result = runner.invoke(auth, ["logout", channel_name])
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type == CondaAuthError
+    assert "configuration source where they are defined" in exception.message
+    keyring_mock.delete_password.assert_not_called()
+    assert condarc.content == {
+        "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
+    }
 
 
 def test_logout_of_non_existing_session(mocker, runner, keyring):
