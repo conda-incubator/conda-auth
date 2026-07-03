@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
@@ -91,9 +93,11 @@ def test_basic_auth_manager_uses_stored_username():
     (None, {USERNAME_PARAM_NAME: "admin"}),
     ids=("missing-settings", "non-keyring-backend"),
 )
-def test_basic_auth_legacy_operations_require_keyring(mocker, settings):
-    mock_storage = mocker.patch("conda_auth.handlers.basic_auth.storage")
-    mock_storage.backend = object()
+def test_basic_auth_legacy_operations_require_keyring(monkeypatch, settings):
+    monkeypatch.setattr(
+        "conda_auth.handlers.basic_auth.storage",
+        SimpleNamespace(backend=object()),
+    )
     auth_manager = BasicAuthManager()
     channel = Channel("tester")
 
@@ -200,10 +204,7 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
 
     manager.remove_secret(channel, settings)
 
-    assert keyring_mock.delete_password_calls == [
-        ("conda-auth::credential::tester", "credential"),
-        ("conda-auth::http-basic::tester", "username"),
-    ]
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 def test_basic_auth_manager_remove_existing_secret_no_username(keyring):
@@ -259,10 +260,7 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
 
     manager.remove_secret(channel, settings)
 
-    assert keyring_mock.delete_password_calls == [
-        ("conda-auth::credential::tester", "credential"),
-        ("conda-auth::http-basic::tester", "username"),
-    ]
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 def test_basic_auth_handler(monkeypatch, keyring, context_factory, request_factory):

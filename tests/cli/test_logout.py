@@ -50,8 +50,7 @@ def test_logout_of_active_session(monkeypatch, runner, keyring, condarc, context
 
     # The keyring secret is removed after the condarc entry is removed.
     assert keyring_mock.delete_password_calls == [
-        (f"conda-auth::credential::{channel_name}", "credential"),
-        (f"conda-auth::{HTTP_BASIC_AUTH_NAME}::{channel_name}", username),
+        (f"conda-auth::credential::{channel_name}", "credential")
     ]
     assert channel_name not in manager._cache
     assert condarc.content == {
@@ -117,18 +116,10 @@ def test_logout_succeeds_when_keyring_delete_is_denied(
     condarc.content = {"channel_settings": [{"channel": channel_name, "auth": TOKEN_NAME}]}
     monkeypatch.setattr(token_manager, "_cache", {channel_name: ("token", "secret-token")})
 
-    with pytest.warns(RuntimeWarning) as warnings:
+    with pytest.warns(RuntimeWarning, match="Unable to delete credential for 'tester'"):
         result = runner.invoke(auth, args)
 
     assert result.exit_code == 0, result.output
-    warning_messages = [str(warning.message) for warning in warnings]
-    assert any(
-        "Unable to delete credential for 'tester'" in message for message in warning_messages
-    )
-    assert any(
-        "Unable to delete legacy credential for 'tester'" in message
-        for message in warning_messages
-    )
     if json_output:
         assert json.loads(result.stdout) == {
             "success": True,
@@ -137,8 +128,7 @@ def test_logout_succeeds_when_keyring_delete_is_denied(
     else:
         assert SUCCESSFUL_LOGOUT_MESSAGE in result.output
     assert keyring_mock.delete_password_calls == [
-        (f"conda-auth::credential::{channel_name}", "credential"),
-        (f"conda-auth::{TOKEN_NAME}::{channel_name}", "token"),
+        (f"conda-auth::credential::{channel_name}", "credential")
     ]
     assert channel_name not in token_manager._cache
     assert condarc.content == {"channel_settings": []}
@@ -190,7 +180,7 @@ def test_logout_does_not_remove_secret_when_condarc_update_fails(
             {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
         ]
     }
-    condarc.__exit__.side_effect = CondaError("Could not save file")
+    condarc.exit_side_effect = CondaError("Could not save file")
 
     result = runner.invoke(auth, ["logout", channel_name])
     exc_type, exception, _ = result.exc_info

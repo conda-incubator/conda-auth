@@ -88,7 +88,6 @@ class TokenAuthManager(AuthManager):
             record = self.get_credential_record(channel, settings)
 
         token_header, token_template = get_token_header_config(settings, record)
-
         # First try the value we passed in.
         token = settings.get(TOKEN_PARAM_NAME)
         if token is not None and not isinstance(token, str):

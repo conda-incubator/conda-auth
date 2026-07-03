@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from conda.models.channel import Channel
 
@@ -133,11 +135,13 @@ def test_auth_manager_builds_default_credential_record():
     )
 
 
-def test_auth_manager_returns_stored_credential_record(mocker):
+def test_auth_manager_returns_stored_credential_record(monkeypatch):
     channel = Channel("tester")
     record = CredentialRecord(target="tester", auth_type="test")
-    mock_storage = mocker.patch("conda_auth.handlers.base.storage")
-    mock_storage.get_credential.return_value = record
+    monkeypatch.setattr(
+        "conda_auth.handlers.base.storage",
+        SimpleNamespace(get_credential=lambda target: record),
+    )
 
     assert StubAuthManager().get_credential_record(channel) == record
 
