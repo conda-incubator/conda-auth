@@ -6,6 +6,7 @@ from conda.exceptions import CondaError
 from conda_auth.cli import SUCCESSFUL_LOGIN_MESSAGE, auth
 from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
+from conda_auth.handlers.token import TOKEN_NAME, USERNAME, TokenAuthManager
 from conda_auth.storage import storage
 
 
@@ -67,8 +68,23 @@ def test_login_with_options_basic_auth(runner, keyring, condarc):
             ["login", "tester", "--token", "token", "--password", "password", "--json"],
             "Option 'password' cannot be used with 'token' or 'oauth2'",
         ),
+        (
+            ["login", "tester", "--basic", "--header", "X-Auth", "--json"],
+            "Token header options can only be used with 'token'",
+        ),
+        (
+            ["login", "tester", "--oauth2", "--header-template", "Token {token}", "--json"],
+            "Token header options can only be used with 'token'",
+        ),
     ),
-    ids=("missing-auth", "missing-auth-json", "token-username-json", "token-password-json"),
+    ids=(
+        "missing-auth",
+        "missing-auth-json",
+        "token-username-json",
+        "token-password-json",
+        "basic-token-header-json",
+        "oauth2-token-template-json",
+    ),
 )
 def test_login_validation_errors_raise_conda_error(runner, keyring, condarc, args, message):
     """
@@ -286,6 +302,70 @@ def test_login_token(mocker, runner, keyring, condarc):
     result = runner.invoke(auth, ["login", channel_name, "--token", "token"])
 
     assert result.exit_code == 0, result.output
+
+
+def test_login_token_can_be_loaded_by_fresh_auth_manager(
+    runner, keyring, condarc, context_factory
+):
+    """Token login persists enough state for later conda network commands."""
+    channel_name = "https://repo.example.com/private-channel"
+    token = "token"
+    keyring(None)
+
+    result = runner.invoke(auth, ["login", channel_name, "--token", token])
+    assert result.exit_code == 0, result.output
+
+    # A later conda command starts with an empty process cache and reads settings
+    # from the conda context built from the user's condarc.
+    context = context_factory(
+        condarc.content["channel_settings"],
+        channels=(channel_name,),
+    )
+    token_manager = TokenAuthManager(context)
+
+    assert token_manager.get_secret(channel_name) == (USERNAME, token)
+    assert token_manager._cache == {channel_name: (USERNAME, token)}
+    assert condarc.content["channel_settings"] == [
+        {
+            "channel": channel_name,
+            "auth": TOKEN_NAME,
+            "auth_target": channel_name,
+        }
+    ]
+
+
+def test_login_token_persists_custom_header_config(runner, keyring, condarc, context_factory):
+    """Custom token header metadata is stored with the token credential."""
+    channel_name = "https://repo.example.com/private-channel"
+    token = "token"
+    keyring(None)
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            channel_name,
+            "--token",
+            token,
+            "--header",
+            "X-Auth",
+            "--token-template",
+            "Token {token}",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    record = storage.get_credential(channel_name)
+    assert record is not None
+    assert record.token == token
+    assert record.token_header == "X-Auth"
+    assert record.token_template == "Token {token}"
+
+    context = context_factory(condarc.content["channel_settings"], channels=(channel_name,))
+    token_manager = TokenAuthManager(context)
+
+    assert token_manager.get_secret(channel_name) == (USERNAME, token)
+    assert token_manager.get_header_config(channel_name) == ("X-Auth", "Token {token}")
 
 
 def test_login_token_json(runner, keyring, condarc):

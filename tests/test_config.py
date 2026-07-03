@@ -18,7 +18,13 @@ channel_settings:
 
 def test_get_updated_channel_settings_preserves_existing_channel_settings():
     channel_settings = [
-        {"channel": "tester", "auth": "token", "ssl_verify": False},
+        {
+            "channel": "tester",
+            "auth": "token",
+            "token_header": "X-Auth",
+            "token_template": "Token {token}",
+            "ssl_verify": False,
+        },
         {"channel": "other", "auth": "token"},
     ]
 
@@ -134,6 +140,9 @@ def test_remove_channel_settings_preserves_non_auth_settings():
                 {
                     "channel": "tester",
                     "auth": "token",
+                    "auth_allow_plaintext_http": True,
+                    "token_header": "X-Auth",
+                    "token_template": "Token {token}",
                     "ssl_verify": False,
                 },
                 {"channel": "other", "auth": "token"},

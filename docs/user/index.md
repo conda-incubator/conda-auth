@@ -62,6 +62,18 @@ listings. Prefer the prompt-based command when working interactively.
 The request handler sends this as `Authorization: Bearer <token>` and does not
 overwrite an existing `Authorization` header.
 
+For services that expect a different token header, customize the header name and
+value template:
+
+```
+conda auth login <channel_name> --token <token_value> \
+  --header X-Auth \
+  --token-template 'Token {token}'
+```
+
+The token template must include `{token}`. The `--token-header` and
+`--header-template` aliases are also accepted.
+
 ### OAuth 2.0/OIDC authentication
 
 OAuth 2.0 is available for OIDC services that support discovery plus
