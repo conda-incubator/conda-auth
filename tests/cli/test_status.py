@@ -189,7 +189,7 @@ def test_oauth_login_uses_explicit_endpoint_options(monkeypatch, runner, keyring
             scopes=config.scopes,
         )
 
-    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+    monkeypatch.setattr("conda_auth.cli.channel.perform_oauth_login", perform_oauth_login)
 
     result = runner.invoke(
         auth,
