@@ -12,7 +12,12 @@ from conda.common.serialize import json, yaml
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 
-from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
+from ..constants import (
+    AUTH_ALLOW_PLAINTEXT_HTTP_PARAM,
+    PROXY_COMMAND_NAME,
+    SUCCESSFUL_LOGIN_MESSAGE,
+    SUCCESSFUL_LOGOUT_MESSAGE,
+)
 from ..exceptions import CondaAuthError
 from ..handlers import (
     HTTP_BASIC_AUTH_NAME,
@@ -34,6 +39,7 @@ from .config import (
 )
 from .oauth2 import build_oauth_login_config
 from .parser import PROMPT_VALUE, build_parser, configure_parser
+from .proxy import auth_proxy_command
 from .status import output_status
 from .status import status as get_status
 
@@ -42,10 +48,6 @@ AUTH_MANAGER_MAPPING = {
     TOKEN_NAME: token_auth_manager,
     OAUTH2_NAME: oauth2_auth_manager,
 }
-
-SUCCESSFUL_LOGIN_MESSAGE = "Successfully stored credentials"
-
-SUCCESSFUL_LOGOUT_MESSAGE = "Successfully removed credentials"
 
 __all__ = (
     "SUCCESSFUL_LOGIN_MESSAGE",
@@ -301,8 +303,19 @@ def auth(args: argparse.Namespace) -> None:
             auth_allow_plaintext_http=args.allow_plaintext_http,
         )
         output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
-    elif args.command == "logout":
+        return
+
+    if args.command == "logout":
         logout(Channel(args.channel))
         output_success(args, SUCCESSFUL_LOGOUT_MESSAGE)
-    elif args.command == "status":
+        return
+
+    if args.command == "status":
         output_status(args, get_status(args.channel))
+        return
+
+    if args.command == PROXY_COMMAND_NAME:
+        auth_proxy_command(args)
+        return
+
+    raise CondaAuthError(f"Unknown command: {args.command}")
