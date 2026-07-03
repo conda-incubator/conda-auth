@@ -2,7 +2,8 @@ from argparse import Namespace
 
 import pytest
 
-from conda_auth.cli import auth, get_auth_manager, prompt_secret, prompt_text
+from conda_auth.cli import auth
+from conda_auth.cli.channel import get_auth_manager, prompt_secret, prompt_text
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers import (
     HTTP_BASIC_AUTH_NAME,
@@ -42,7 +43,7 @@ def test_prompt_secret_uses_getpass(mocker):
     """
     Test to make sure the secret prompt delegates to getpass.
     """
-    getpass_mock = mocker.patch("conda_auth.cli.getpass", return_value="secret")
+    getpass_mock = mocker.patch("conda_auth.cli.channel.getpass", return_value="secret")
 
     assert prompt_secret("Password: ") == "secret"
     getpass_mock.assert_called_once_with("Password: ")

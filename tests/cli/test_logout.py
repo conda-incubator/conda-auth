@@ -21,7 +21,7 @@ def test_logout_of_active_session(mocker, runner, keyring, condarc):
     username = "user"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring_mock, _ = keyring(secret)
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
@@ -67,7 +67,7 @@ def test_logout_of_active_session_json(mocker, runner, keyring, condarc):
     username = "user"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring(secret)
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
@@ -95,7 +95,7 @@ def test_logout_does_not_remove_secret_when_condarc_update_fails(mocker, runner,
     channel_name = "tester"
     username = "user"
 
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring_mock, _ = keyring("password")
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
@@ -135,7 +135,7 @@ def test_logout_preserves_auth_settings_outside_user_condarc(
         )
     )
     monkeypatch.setattr(
-        "conda_auth.cli.context",
+        "conda_auth.cli.channel.context",
         context_factory(
             [{"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}]
         ),
@@ -162,7 +162,7 @@ def test_logout_reports_missing_external_credential(
     channel_name = "tester"
     keyring(None)
     monkeypatch.setattr(
-        "conda_auth.cli.context",
+        "conda_auth.cli.channel.context",
         context_factory([{"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME}]),
     )
     condarc.content = {"channel_settings": [{"channel": channel_name, "ssl_verify": False}]}
@@ -194,7 +194,7 @@ def test_logout_reports_missing_external_credential(
     ids=("basic", "token", "oauth2"),
 )
 def test_logout_removes_orphaned_credential(mocker, runner, keyring, condarc, record):
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring(None)
     mock_context.channel_settings = []
     storage.set_credential(record)
@@ -213,7 +213,7 @@ def test_logout_of_non_existing_session(mocker, runner, keyring):
     channel_name = "tester"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring(None)
     mock_context.channel_settings = []
 
