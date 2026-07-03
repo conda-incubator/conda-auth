@@ -1,4 +1,4 @@
-[project]
+[workspace]
 name = "conda-auth"
 version = "0.2.0"
 description = "A conda plugin for handling multiple authentication schemes"
@@ -18,12 +18,20 @@ testhtml = "pytest --cov=conda_auth --cov-report=html --doctest-modules"
 # Build commands
 build = "rattler-build build --recipe recipe.yaml"
 
+[feature.docs.tasks]
+docs = "sphinx-build -b html docs docs/_build/html"
+
 [dependencies]
-python = ">=3.8"
-conda = ">=23.9.0"
+python = ">=3.10"
+conda = ">=26.1"
 keyring = "*"
 requests = "*"
-"ruamel.yaml" = "*"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
 
 [feature.py312.dependencies]
 python = "3.12.*"
@@ -34,32 +42,41 @@ python = "3.11.*"
 [feature.py310.dependencies]
 python = "3.10.*"
 
-[feature.py39.dependencies]
-python = "3.9.*"
-
-[feature.py38.dependencies]
-python = "3.8.*"
-
 [feature.dev.dependencies]
-darker = "*"
-flake8 = "*"
 "keyrings.alt" = "*"
-mypy = "*"
 pip = "*"
-pyupgrade = "*"
 pytest = "*"
 pytest-cov = "*"
 pytest-mock = "*"
 pre-commit = "*"
 rattler-build = "*"
+ruff = "*"
+ty = "*"
+
+[feature.docs.dependencies]
+python = ">=3.10,<3.13"
+conda-sphinx-theme = "==0.1.3"
+linkify-it-py = "==2.0.0"
+myst-parser = "==0.18.1"
+sphinx-copybutton = "==0.5.0"
+sphinx-design = "==0.5.0"
+sphinx-sitemap = "==2.2.1"
+sphinxcontrib-applehelp = "==1.0.2"
+sphinxcontrib-devhelp = "==1.0.2"
+sphinxcontrib-htmlhelp = "==2.0.0"
+sphinxcontrib-jsmath = "==1.0.1"
+sphinxcontrib-mermaid = "==0.7.1"
+sphinxcontrib-qthelp = "==1.0.3"
+sphinxcontrib-serializinghtml = "==1.1.5"
 
 [environments]
+docs = { features = ["docs"], no-default-feature = true }
 dev = ["dev"]
+dev-py314 = ["dev", "py314"]
+dev-py313 = ["dev", "py313"]
 dev-py312 = ["dev", "py312"]
 dev-py311 = ["dev", "py311"]
 dev-py310 = ["dev", "py310"]
-dev-py39 = ["dev", "py39"]
-dev-py38 = ["dev", "py38"]
 
 [activation]
 scripts = ["dev/setup.sh"]

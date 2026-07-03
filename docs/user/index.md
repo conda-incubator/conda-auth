@@ -25,10 +25,16 @@ conda auth login <channel_name> --basic
 
 Once this has been run, you will be prompted for your username and password.
 
-You also have the ability to specify username and password as command options:
+For non-interactive automation, you can also specify username and password as command
+options:
 
 ```
-conda auth login <chanel_name> --basic --username $USERNAME --password $PASSWORD
+conda auth login <channel_name> --basic --username "$USERNAME" --password "$PASSWORD"
+```
+
+```{caution}
+Passing passwords directly on the command line may expose them in shell history or
+process listings. Prefer the prompt-based command when working interactively.
 ```
 
 ### Token authentication
@@ -42,10 +48,15 @@ conda auth login <channel_name> --token
 ```
 
 You will then be prompted for your token. Optionally, you can specify the token value as
-an option:
+an option for non-interactive automation:
 
 ```
 conda auth login <channel_name> --token <token_value>
+```
+
+```{caution}
+Passing tokens directly on the command line may expose them in shell history or process
+listings. Prefer the prompt-based command when working interactively.
 ```
 
 For other channels not hosted at anaconda.org, use the full URL of the channel:
@@ -56,14 +67,21 @@ conda auth login https://example.com/my-protected-channel --token
 
 ### Logging out of a channel
 
-If you want to clear you user credentials from your computer for any reason, you can do so by
+If you want to clear your user credentials from your computer for any reason, you can do so by
 running the `conda auth logout` command. All you have to do is provide a channel name, and it
-will find and remove your credentials from the password store.
+will find and remove your credentials from the password store and user conda configuration.
 
 You can do this by running the following command:
 
 ```
 conda auth logout <channel_name>
+```
+
+Both `login` and `logout` support JSON output for automation:
+
+```
+conda auth login <channel_name> --token --json
+conda auth logout <channel_name> --json
 ```
 
 ### Storage backend unavailable?

@@ -1,10 +1,10 @@
-# flake8: noqa: F401
+# noqa: F401
 from keyring import get_keyring
 from keyring.errors import NoKeyringError
 
+from ..exceptions import CondaAuthError
 from .base import Storage
 from .keyring import KeyringStorage
-from ..exceptions import CondaAuthError
 
 
 def get_storage_backend() -> Storage:

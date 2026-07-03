@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "conda-auth"
 dynamic = ["version"]
 description = "A conda plugin for handling multiple authentication schemes"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 classifiers = [
   "Development Status :: 5 - Production/Stable",
@@ -15,19 +15,18 @@ classifiers = [
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy"
 ]
 dependencies = [
-  "click",
-  "conda",
+  "conda>=26.1",
   "keyring",
   "requests",
-  "ruamel.yaml",
 ]
 
 [project.entry-points.conda]
@@ -38,3 +37,17 @@ find = {}
 
 [tool.hatch.version]
 source = "vcs"
+
+[tool.ruff]
+line-length = 99
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+ignore = ["E203", "E402", "E501", "E722", "E731"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = ["conda_auth._version"]
+
+[tool.ty.src]
+include = ["conda_auth", "tests"]

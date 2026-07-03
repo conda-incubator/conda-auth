@@ -14,7 +14,5 @@ def test_no_available_storage_backend(keyring):
 
     get_keyring_mock.side_effect = NoKeyringError()
 
-    with pytest.raises(
-        CondaAuthError, match="Unable to find a credential storage backend"
-    ):
+    with pytest.raises(CondaAuthError, match="Unable to find a credential storage backend"):
         get_storage_backend()

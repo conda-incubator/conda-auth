@@ -1,19 +1,21 @@
 """
 A place to register plugin hooks
 """
-from conda.cli.conda_argparse import BUILTIN_COMMANDS
-from conda.plugins import CondaAuthHandler, CondaPreCommand, CondaSubcommand, hookimpl
 
+from conda.cli.conda_argparse import BUILTIN_COMMANDS
+from conda.plugins import hookimpl
+from conda.plugins.types import CondaAuthHandler, CondaPreCommand, CondaSubcommand
+
+from .cli import auth, configure_parser
+from .constants import PLUGIN_NAME
 from .handlers import (
-    basic_auth_manager,
-    token_auth_manager,
-    BasicAuthHandler,
-    TokenAuthHandler,
     HTTP_BASIC_AUTH_NAME,
     TOKEN_NAME,
+    BasicAuthHandler,
+    TokenAuthHandler,
+    basic_auth_manager,
+    token_auth_manager,
 )
-from .cli import auth
-from .constants import PLUGIN_NAME
 
 ENV_COMMANDS = {
     "env_config",
@@ -36,6 +38,7 @@ BUILD_COMMANDS = {
     "skeleton",
 }
 
+
 @hookimpl
 def conda_subcommands():
     """
@@ -43,7 +46,8 @@ def conda_subcommands():
     """
     yield CondaSubcommand(
         name="auth",
-        action=lambda args: auth(prog_name="conda auth", args=args),
+        action=auth,
+        configure_parser=configure_parser,
         summary="Authentication commands for conda",
     )
 

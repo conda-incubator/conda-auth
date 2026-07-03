@@ -7,12 +7,12 @@ from keyring.errors import PasswordDeleteError
 
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.token import (
-    is_anaconda_dot_org,
-    manager,
-    USERNAME,
     TOKEN_NAME,
+    USERNAME,
     TokenAuthHandler,
     TokenAuthManager,
+    is_anaconda_dot_org,
+    manager,
 )
 
 
@@ -23,7 +23,13 @@ def clean_up_manager_cache():
 
 
 @pytest.mark.parametrize(
-    "channel_name,expected", (("conda-forge", True), ("http://localhost", False))
+    "channel_name,expected",
+    (
+        ("conda-forge", True),
+        ("http://localhost", False),
+        ("https://notanaconda.org/channel", False),
+        ("https://anaconda.org.evil.example/channel", False),
+    ),
 )
 def test_is_anaconda_dot_org(channel_name, expected):
     """
