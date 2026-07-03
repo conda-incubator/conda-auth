@@ -177,8 +177,9 @@ def test_token_auth_handler_with_bearer_token(mocker, keyring):
     assert keyring_mock.get_password_calls == [
         ("conda-auth::credential::http://localhost", "credential"),
         ("conda-auth::token::http://localhost", USERNAME),
+        ("conda-auth::token::http://localhost", USERNAME),
     ]
-    keyring_mock.set_password.assert_not_called()
+    keyring_mock.set_password.assert_called_once()
 
 
 def test_token_auth_handler_sets_custom_token_header(
@@ -247,8 +248,9 @@ def test_token_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
     assert keyring_mock.get_password_calls == [
         ("conda-auth::credential::http://localhost", "credential"),
         ("conda-auth::token::http://localhost", USERNAME),
+        ("conda-auth::token::http://localhost", USERNAME),
     ]
-    keyring_mock.set_password.assert_not_called()
+    keyring_mock.set_password.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -296,8 +298,9 @@ def test_token_auth_handler_allows_plaintext_http_when_configured(
     assert keyring_mock.get_password_calls == [
         ("conda-auth::credential::http://example.com/private-channel", "credential"),
         ("conda-auth::token::http://example.com/private-channel", USERNAME),
+        ("conda-auth::token::http://example.com/private-channel", USERNAME),
     ]
-    keyring_mock.set_password.assert_not_called()
+    keyring_mock.set_password.assert_called_once()
 
 
 def test_token_auth_handler_no_token_available_error():
@@ -351,3 +354,75 @@ def test_token_auth_manager_get_secret_loads_from_channel_settings(keyring):
 
     assert token_manager.get_secret(channel) == (USERNAME, token)
     assert token_manager._cache == {channel: (USERNAME, token)}
+
+
+def test_token_auth_manager_migrates_legacy_keyring_entry(keyring, context_factory):
+    """Old token keyring entries are rewritten as structured records on first use."""
+    channel = "channel"
+    token = "legacy-token"
+
+    context = context_factory(
+        [{"channel": channel, "auth": TOKEN_NAME}],
+        channels=(channel,),
+    )
+    keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[(f"conda-auth::{TOKEN_NAME}::{channel}", USERNAME)] = token
+
+    token_manager = TokenAuthManager(context)
+
+    assert token_manager.get_secret(channel) == (USERNAME, token)
+    assert KeyringStorage().get_credential(channel) == CredentialRecord(
+        target=channel,
+        auth_type=TOKEN_NAME,
+        username=USERNAME,
+        token=token,
+        token_header="Authorization",
+        token_template="Bearer {token}",
+    )
+    assert (f"conda-auth::{TOKEN_NAME}::{channel}", USERNAME) not in keyring_mock.secrets
+
+
+def test_token_auth_manager_removes_legacy_keyring_entry(keyring):
+    """Logout cleanup also removes old token keyring entries."""
+    channel = Channel("tester")
+    keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[(f"conda-auth::{TOKEN_NAME}::{channel.canonical_name}", USERNAME)] = (
+        "legacy-token"
+    )
+
+    manager.remove_secret(channel, {})
+
+    assert (
+        f"conda-auth::{TOKEN_NAME}::{channel.canonical_name}",
+        USERNAME,
+    ) not in keyring_mock.secrets
+
+
+@pytest.mark.parametrize(
+    ("settings", "message"),
+    (
+        ({"token": "token", "token_header": "Bad Header"}, "valid HTTP header field name"),
+        ({"token": "token", "token_template": "Token"}, "must include"),
+        ({"token": "token", "token_template": "Token {{token}}"}, "must include"),
+        ({"token": "token", "token_template": "Token {missing}"}, "must include"),
+        (
+            {"token": "token", "token_template": "Token {token} {missing}"},
+            "must only use",
+        ),
+        ({"token": "token", "token_template": "Token {token}\nX: y"}, "line breaks"),
+    ),
+    ids=(
+        "bad-header",
+        "missing-token",
+        "escaped-token",
+        "unknown-field",
+        "extra-field",
+        "line-break",
+    ),
+)
+def test_token_auth_manager_rejects_invalid_header_config(keyring, settings, message):
+    """Invalid token header configuration is rejected before persistence."""
+    keyring(None)
+
+    with pytest.raises(CondaAuthError, match=message):
+        manager.store(Channel("tester"), settings)
