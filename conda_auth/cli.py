@@ -98,7 +98,6 @@ def update_channel_settings(
         username,
     )
 
-
 def get_auth_manager(
     auth: str | None = None,
     basic: bool | None = None,
@@ -159,6 +158,7 @@ def logout(channel: Channel):
 
     auth_type, auth_manager = get_auth_manager(**settings)
     auth_manager.remove_secret(channel, settings)
+    auth_manager.cache_clear(channel.canonical_name)
 
 
 def configure_parser(parser: argparse.ArgumentParser) -> None:

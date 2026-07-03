@@ -1,4 +1,5 @@
-# noqa: F401
+from __future__ import annotations
+
 from keyring import get_keyring
 from keyring.errors import NoKeyringError
 
@@ -28,4 +29,29 @@ def get_storage_backend() -> Storage:
     return KeyringStorage()
 
 
-storage = get_storage_backend()
+class LazyStorage(Storage):
+    """
+    Resolve credential storage only when credentials are accessed.
+    """
+
+    def __init__(self) -> None:
+        self._storage: Storage | None = None
+
+    @property
+    def backend(self) -> Storage:
+        if self._storage is None:
+            self._storage = get_storage_backend()
+
+        return self._storage
+
+    def get_password(self, key_id: str, username: str) -> str | None:
+        return self.backend.get_password(key_id, username)
+
+    def set_password(self, key_id: str, username: str, password: str) -> None:
+        return self.backend.set_password(key_id, username, password)
+
+    def delete_password(self, key_id: str, username: str) -> None:
+        return self.backend.delete_password(key_id, username)
+
+
+storage = LazyStorage()

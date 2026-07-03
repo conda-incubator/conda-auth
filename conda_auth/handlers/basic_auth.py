@@ -108,7 +108,7 @@ class BasicAuthHandler(ChannelAuthBase):
         super().__init__(channel_name)
         self.username, self.password = manager.get_secret(channel_name)
 
-        if self.username is None and self.password is None:
+        if self.username is None or self.password is None:
             raise CondaAuthError(
                 f"Unable to find user credentials for requests with channel {channel_name}"
             )

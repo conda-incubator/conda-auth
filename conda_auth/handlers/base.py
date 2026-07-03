@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from fnmatch import fnmatch
 
 import conda.base.context
 from conda.base.context import context as global_context
@@ -26,28 +27,15 @@ class AuthManager(ABC):
         self._context = context or global_context
         self._cache = {} if cache is None else cache
 
-    def hook_action(self, command: str) -> None:
-        """Action callable to be used in the conda pre-command plugin hook"""
-
-        for settings in self._context.channel_settings:
-            if channel := settings.get("channel"):
-                channel = Channel(channel)
-                # Only attempt to authenticate for actively used channels
-                if (
-                    channel.canonical_name in self._context.channels
-                    and settings.get("auth") == self.get_auth_type()
-                ):
-                    self.store(channel, settings)
-
-    def store(self, channel: Channel, settings: Mapping[str, str]) -> str:
+    def store(self, channel: Channel, settings: Mapping[str, str | None]) -> str:
         """
-        Used to retrieve credentials and store them on the ``cache`` property
+        Used to retrieve credentials and store them in the credential store.
 
         This method returns a "username" because this property could have been retrieved
         via user input while calling ``fetch_secret``.
         """
         extra_params = {param: settings.get(param) for param in self.get_config_parameters()}
-        username, secret = self.fetch_secret(channel, extra_params)
+        username, secret = self.fetch_secret(channel, extra_params, use_cache=False)
 
         self.save_credentials(channel, username, secret)
 
@@ -60,12 +48,16 @@ class AuthManager(ABC):
         storage.set_password(self.get_keyring_id(channel), username, secret)
 
     def fetch_secret(
-        self, channel: Channel, settings: Mapping[str, str | None]
+        self,
+        channel: Channel,
+        settings: Mapping[str, str | None],
+        *,
+        use_cache: bool = True,
     ) -> tuple[str, str]:
         """
         Fetch secrets and handle updating cache.
         """
-        if secrets := self._cache.get(channel.canonical_name):
+        if use_cache and (secrets := self._cache.get(channel.canonical_name)):
             return secrets
 
         secrets = self._fetch_secret(channel, settings)
@@ -75,14 +67,46 @@ class AuthManager(ABC):
 
     def get_secret(self, channel_name: str) -> tuple[str | None, str | None]:
         """
-        Get the secret that is currently cached for the channel
+        Get the secret for a channel, using the in-process cache when possible.
         """
-        secrets = self._cache.get(channel_name)
+        channel = Channel(channel_name)
+        secrets = self._cache.get(channel.canonical_name)
 
-        if secrets is None:
+        if secrets is not None:
+            return secrets
+
+        settings = self.get_channel_settings(channel)
+        if settings is None:
             return None, None
 
-        return secrets
+        return self.fetch_secret(channel, settings)
+
+    def get_channel_settings(self, channel: Channel) -> Mapping[str, str | None] | None:
+        """
+        Find the auth settings that apply to a channel.
+        """
+        matched_settings = None
+        for settings in self._context.channel_settings:
+            if settings.get("auth") != self.get_auth_type():
+                continue
+            if configured_channel := settings.get("channel"):
+                if self.channel_matches(configured_channel, channel):
+                    matched_settings = settings
+
+        return matched_settings
+
+    def channel_matches(self, configured_channel: str, channel: Channel) -> bool:
+        """
+        Match configured channel names using conda's canonical channel names.
+        """
+        configured_canonical_name = Channel(configured_channel).canonical_name
+
+        return (
+            configured_channel == channel.canonical_name
+            or configured_canonical_name == channel.canonical_name
+            or fnmatch(channel.canonical_name, configured_channel)
+            or fnmatch(channel.canonical_name, configured_canonical_name)
+        )
 
     def cache_clear(self, channel_name: str | None = None) -> None:
         """
