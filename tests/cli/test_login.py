@@ -222,7 +222,7 @@ def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring
 
     # Make condarc persistence fail before the keyring write can happen.
     keyring_mock, _ = keyring(None)
-    condarc.__exit__.side_effect = CondaError("Could not save file")
+    condarc.exit_side_effect = CondaError("Could not save file")
 
     result = runner.invoke(
         auth,
@@ -247,7 +247,7 @@ def test_login_requires_user_channel_settings_list(runner, keyring, condarc):
 
     assert exc_type is CondaAuthError
     assert exception.message == "Expected 'channel_settings' to be a list"
-    keyring_mock.set_password.assert_not_called()
+    assert keyring_mock.set_password_calls == []
 
 
 def test_login_reports_user_condarc_read_error(monkeypatch, runner, keyring):
@@ -270,7 +270,7 @@ def test_login_reports_user_condarc_read_error(monkeypatch, runner, keyring):
 
     assert exc_type is CondaAuthError
     assert exception.message == "Could not read file"
-    keyring_mock.set_password.assert_not_called()
+    assert keyring_mock.set_password_calls == []
 
 
 @pytest.mark.parametrize(
@@ -296,7 +296,7 @@ def test_login_error_when_storing_secret_reports_rollback(
     keyring_mock, _ = keyring(None)
     keyring_mock.set_password_side_effect = CondaAuthError("Could not save secret")
     if rollback_error is not None:
-        condarc.__exit__.side_effect = [None, rollback_error]
+        condarc.exit_side_effects = [None, rollback_error]
 
     result = runner.invoke(
         auth,
@@ -453,7 +453,13 @@ def test_login_verify_failure_removes_config_before_credential(
 
     monkeypatch.setattr("conda_auth.cli.channel.verify_channel_credentials", verify_credentials)
     monkeypatch.setattr("conda_auth.cli.channel.storage.delete_credential", delete_record)
-    condarc.__exit__.side_effect = lambda *_: events.append("write-config")
+    exit_config = type(condarc).__exit__
+
+    def record_config_write(config, *args):
+        events.append("write-config")
+        return exit_config(config, *args)
+
+    monkeypatch.setattr(type(condarc), "__exit__", record_config_write)
 
     result = runner.invoke(
         auth,
@@ -802,7 +808,7 @@ def test_login_infers_auth_type_from_external_channel_settings(
 
     assert result.exit_code == 0, result.output
     assert condarc.content == {}
-    condarc.__enter__.assert_not_called()
+    assert condarc.enter_calls == 0
     record = storage.get_credential(channel)
     assert record is not None
     assert record.to_dict() | expected_record == record.to_dict()
@@ -835,7 +841,7 @@ def test_login_uses_external_token_file_without_copying_it(
 
     assert result.exit_code == 0, result.output
     assert condarc.content == {}
-    condarc.__enter__.assert_not_called()
+    assert condarc.enter_calls == 0
     assert keyring_mock.get_password_calls == []
     assert keyring_mock.set_password_calls == []
 
@@ -882,7 +888,7 @@ def test_login_uses_external_oauth_settings_without_copying_them(
 
     assert result.exit_code == 0, result.output
     assert condarc.content == {}
-    condarc.__enter__.assert_not_called()
+    assert condarc.enter_calls == 0
     assert captured[0].issuer_url == "https://idp.example.com"
     assert captured[0].client_id == "client"
     assert captured[0].flow == "device-code"

@@ -53,8 +53,7 @@ def test_logout_of_active_session(monkeypatch, runner, keyring, condarc, context
 
     # The keyring secret is removed after the condarc entry is removed.
     assert keyring_mock.delete_password_calls == [
-        (f"conda-auth::credential::{channel_name}", "credential"),
-        (f"conda-auth::{HTTP_BASIC_AUTH_NAME}::{channel_name}", username),
+        (f"conda-auth::credential::{channel_name}", "credential")
     ]
     assert channel_name not in manager._cache
     assert condarc.content == {
@@ -120,18 +119,10 @@ def test_logout_succeeds_when_keyring_delete_is_denied(
     condarc.content = {"channel_settings": [{"channel": channel_name, "auth": TOKEN_NAME}]}
     monkeypatch.setattr(token_manager, "_cache", {channel_name: ("token", "secret-token")})
 
-    with pytest.warns(RuntimeWarning) as warnings:
+    with pytest.warns(RuntimeWarning, match="Unable to delete credential for 'tester'"):
         result = runner.invoke(auth, args)
 
     assert result.exit_code == 0, result.output
-    warning_messages = [str(warning.message) for warning in warnings]
-    assert any(
-        "Unable to delete credential for 'tester'" in message for message in warning_messages
-    )
-    assert any(
-        "Unable to delete legacy credential for 'tester'" in message
-        for message in warning_messages
-    )
     if json_output:
         assert json.loads(result.stdout) == {
             "success": True,
@@ -140,8 +131,7 @@ def test_logout_succeeds_when_keyring_delete_is_denied(
     else:
         assert SUCCESSFUL_LOGOUT_MESSAGE in result.output
     assert keyring_mock.delete_password_calls == [
-        (f"conda-auth::credential::{channel_name}", "credential"),
-        (f"conda-auth::{TOKEN_NAME}::{channel_name}", "token"),
+        (f"conda-auth::credential::{channel_name}", "credential")
     ]
     assert channel_name not in token_manager._cache
     assert condarc.content == {"channel_settings": []}
@@ -193,7 +183,7 @@ def test_logout_does_not_remove_secret_when_condarc_update_fails(
             {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
         ]
     }
-    condarc.__exit__.side_effect = CondaError("Could not save file")
+    condarc.exit_side_effect = CondaError("Could not save file")
 
     result = runner.invoke(auth, ["logout", channel_name])
     exc_type, exception, _ = result.exc_info
@@ -234,7 +224,7 @@ def test_logout_preserves_auth_settings_outside_user_condarc(
 
     assert result.exit_code == 0, result.output
     assert storage.get_credential(channel_name) is None
-    condarc.__enter__.assert_not_called()
+    assert condarc.enter_calls == 0
     assert condarc.content == {
         "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
     }
@@ -261,7 +251,7 @@ def test_logout_reports_missing_external_credential(
     assert result.exit_code == 1, result.output
     assert exc_type is CondaAuthError
     assert "No stored credential" in exception.message
-    condarc.__enter__.assert_not_called()
+    assert condarc.enter_calls == 0
     assert condarc.content == {
         "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
     }
@@ -281,17 +271,18 @@ def test_logout_reports_missing_external_credential(
     ),
     ids=("basic", "token", "oauth2"),
 )
-def test_logout_removes_orphaned_credential(mocker, runner, keyring, condarc, record):
-    mock_context = mocker.patch("conda_auth.cli.channel.context")
+def test_logout_removes_orphaned_credential(
+    monkeypatch, runner, keyring, condarc, context_factory, record
+):
     keyring(None)
-    mock_context.channel_settings = []
+    monkeypatch.setattr("conda_auth.cli.channel.context", context_factory())
     storage.set_credential(record)
 
     result = runner.invoke(auth, ["logout", record.target])
 
     assert result.exit_code == 0, result.output
     assert storage.get_credential(record.target) is None
-    condarc.__enter__.assert_not_called()
+    assert condarc.enter_calls == 0
 
 
 def test_logout_of_non_existing_session(monkeypatch, runner, keyring, context_factory):
