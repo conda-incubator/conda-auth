@@ -133,6 +133,8 @@ class BasicAuthManager(AuthManager):
             record = self.create_credential_record(channel, username, password, settings)
             if record.target != target:
                 record = replace(record, target=target)
+            backend.set_credential(record)
+            backend.delete_legacy_password(HTTP_BASIC_AUTH_NAME, legacy_target, username)
             return record
 
         return None
