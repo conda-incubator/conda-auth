@@ -4,6 +4,8 @@ import argparse
 
 from conda.cli.helpers import add_parser_json
 
+from ..oauth2_client import OAUTH_SCOPE_PARAM_NAME
+
 PROMPT_VALUE = object()
 
 
@@ -26,6 +28,33 @@ def add_plaintext_option(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Allow credentials to be used over plaintext HTTP for this channel",
     )
+
+
+def add_oauth_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--oauth-issuer-url", help="OIDC issuer URL")
+    parser.add_argument("--oauth-client-id", help="OAuth client ID")
+    parser.add_argument(
+        "--oauth-client-secret",
+        nargs="?",
+        const=PROMPT_VALUE,
+        metavar="SECRET",
+        help="OAuth client secret for confidential clients",
+    )
+    parser.add_argument(
+        "--oauth-flow",
+        choices=("auto", "auth-code", "device-code"),
+        default="auto",
+        help="OAuth flow to use",
+    )
+    parser.add_argument(
+        "--oauth-scope",
+        dest=OAUTH_SCOPE_PARAM_NAME,
+        action="append",
+        default=[],
+        help="OAuth scope to request. May be supplied multiple times",
+    )
+    parser.add_argument("--oauth-redirect-uri", help="OAuth redirect URI")
+    parser.add_argument("--user-agent", help="User-Agent header for OAuth requests")
 
 
 def configure_parser(parser: argparse.ArgumentParser) -> None:
@@ -54,9 +83,15 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         const=PROMPT_VALUE,
         metavar="TOKEN",
-        help="Token to use for private channels using an API token",
+        help="Bearer token to use in the Authorization header",
+    )
+    auth_options.add_argument(
+        "--oauth2",
+        action="store_true",
+        help="Use OAuth 2.0/OIDC authentication",
     )
     add_basic_options(login_parser)
+    add_oauth_options(login_parser)
     add_plaintext_option(login_parser)
     add_parser_json(login_parser)
     login_parser.set_defaults(parser=login_parser)

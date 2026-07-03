@@ -25,6 +25,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy"
 ]
 dependencies = [
+  "authlib>=1.7.2",
   "conda>=26.1",
   "keyring",
   "requests",
@@ -56,6 +57,7 @@ build = "rattler-build build --recipe recipe.yaml"
 
 [tool.pixi.dependencies]
 python = ">=3.10"
+authlib = ">=1.7.2"
 conda = ">=26.1"
 keyring = "*"
 requests = "*"
