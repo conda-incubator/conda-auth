@@ -26,7 +26,7 @@ conda install --name base --channel conda-forge conda-auth
 conda auth login https://example.com/my-protected-channel --basic
 ```
 
-**Log in** to an anaconda.org channel with a token:
+**Log in** to a channel with a bearer token:
 
 ```
 conda auth login https://example.com/my-protected-channel --token
@@ -112,6 +112,7 @@ does not set process-wide AWS environment variables for S3 credentials.
 
 For more details about storage, platform behavior, and common workflows, see the
 [user FAQ](docs/user/faq.md).
+
 
 ## Contributing to This Project
 

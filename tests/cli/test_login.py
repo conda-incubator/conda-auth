@@ -221,7 +221,7 @@ def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring
 
     # Make condarc persistence fail before the keyring write can happen.
     keyring_mock, _ = keyring(None)
-    condarc.__exit__.side_effect = CondaError("Could not save file")
+    condarc.exit_side_effect = CondaError("Could not save file")
 
     result = runner.invoke(
         auth,
@@ -257,7 +257,7 @@ def test_login_error_when_storing_secret_reports_rollback(
     keyring_mock, _ = keyring(None)
     keyring_mock.set_password_side_effect = CondaAuthError("Could not save secret")
     if rollback_error is not None:
-        condarc.__exit__.side_effect = [None, rollback_error]
+        condarc.exit_side_effects = [None, rollback_error]
 
     result = runner.invoke(
         auth,

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
@@ -17,13 +19,17 @@ class FakeContext:
 class FakeCondarc:
     content: dict[str, Any] = field(default_factory=dict)
     exit_side_effect: BaseException | None = None
+    exit_side_effects: list[BaseException | None] = field(default_factory=list)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.exit_side_effect is not None:
-            raise self.exit_side_effect
+        side_effect = (
+            self.exit_side_effects.pop(0) if self.exit_side_effects else self.exit_side_effect
+        )
+        if side_effect is not None:
+            raise side_effect
         return None
 
 
@@ -47,9 +53,7 @@ class RecordingKeyring:
         self.get_password_calls.append((key_id, username))
         if self.get_password_side_effect is not None:
             raise self.get_password_side_effect
-        if key_id.startswith("conda-auth::credential::") or key_id == "conda-auth::index":
-            return self.secrets.get((key_id, username))
-        return self.secrets.get((key_id, username), self.secret)
+        return self.secrets.get((key_id, username))
 
     def set_password(self, key_id: str, username: str, password: str) -> None:
         self.set_password_calls.append((key_id, username, password))
@@ -134,45 +138,16 @@ class ArgparseRunner:
 
 
 @pytest.fixture
-def keyring(mocker):
+def keyring(monkeypatch):
     """
-    Used to mock keyring for the duration of our tests
+    Used to replace keyring for the duration of our tests.
     """
 
     def _keyring(secret):
-        get_keyring = mocker.patch("conda_auth.storage.get_keyring")
-        keyring_storage = mocker.patch("conda_auth.storage.keyring.keyring")
-        keyring_storage.secrets = {}
-        keyring_storage.get_password_calls = []
-        keyring_storage.set_password_calls = []
-        keyring_storage.delete_password_calls = []
-        keyring_storage.get_password_side_effect = None
-        keyring_storage.set_password_side_effect = None
-        keyring_storage.delete_password_side_effect = None
-
-        def get_password(key_id, username):
-            keyring_storage.get_password_calls.append((key_id, username))
-            if keyring_storage.get_password_side_effect is not None:
-                raise keyring_storage.get_password_side_effect
-            if key_id.startswith("conda-auth::credential::") or key_id == "conda-auth::index":
-                return keyring_storage.secrets.get((key_id, username))
-            return keyring_storage.secrets.get((key_id, username), secret)
-
-        def set_password(key_id, username, password):
-            keyring_storage.set_password_calls.append((key_id, username, password))
-            if keyring_storage.set_password_side_effect is not None:
-                raise keyring_storage.set_password_side_effect
-            keyring_storage.secrets[(key_id, username)] = password
-
-        def delete_password(key_id, username):
-            keyring_storage.delete_password_calls.append((key_id, username))
-            if keyring_storage.delete_password_side_effect is not None:
-                raise keyring_storage.delete_password_side_effect
-            keyring_storage.secrets.pop((key_id, username), None)
-
-        keyring_storage.get_password.side_effect = get_password
-        keyring_storage.set_password.side_effect = set_password
-        keyring_storage.delete_password.side_effect = delete_password
+        keyring_storage = RecordingKeyring(secret)
+        get_keyring = RecordingGetKeyring(keyring_storage)
+        monkeypatch.setattr("conda_auth.storage.get_keyring", get_keyring)
+        monkeypatch.setattr("conda_auth.storage.keyring.keyring", keyring_storage)
 
         return keyring_storage, get_keyring
 
@@ -189,10 +164,13 @@ def runner():
 
 @pytest.fixture
 def context_factory():
-    def _context_factory(channel_settings=None, channels=()):
-        return FakeContext(channel_settings=channel_settings or [], channels=channels)
+    def _context(channel_settings=None, channels=()):
+        return FakeContext(
+            channel_settings=[] if channel_settings is None else channel_settings,
+            channels=channels,
+        )
 
-    return _context_factory
+    return _context
 
 
 @pytest.fixture
@@ -201,18 +179,18 @@ def request_factory():
 
 
 @pytest.fixture
-def condarc(mocker):
+def condarc(monkeypatch):
     """
-    Mocks the user condarc configuration file object.
+    Replaces the user condarc configuration file object.
     """
-    config = mocker.MagicMock()
-    config.__enter__.return_value = config
-    config.__exit__.return_value = None
-    config.content = {}
-    mocker.patch("conda_auth.cli.channel.ConfigurationFile.from_user_condarc", return_value=config)
-    mocker.patch(
+    config = FakeCondarc()
+    monkeypatch.setattr(
+        "conda_auth.cli.channel.ConfigurationFile.from_user_condarc",
+        lambda: config,
+    )
+    monkeypatch.setattr(
         "conda_auth.cli.proxy.ConfigurationFile.from_user_condarc",
-        return_value=config,
+        lambda: config,
     )
 
     return config
