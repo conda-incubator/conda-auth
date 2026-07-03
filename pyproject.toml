@@ -51,3 +51,8 @@ allowed-unresolved-imports = ["conda_auth._version"]
 
 [tool.ty.src]
 include = ["conda_auth", "tests"]
+
+[tool.pytest.ini_options]
+markers = [
+  "integration: tests that run real conda subprocesses against a local HTTP server",
+]
