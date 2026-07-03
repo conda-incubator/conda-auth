@@ -9,7 +9,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = html_title = "conda auth"
+project = html_title = "conda-auth"
 copyright = "2023, Anaconda, Inc."
 author = "Anaconda, Inc."
 
