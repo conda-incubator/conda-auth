@@ -21,8 +21,8 @@ def test_login_basic_auth_no_options(mocker, runner, keyring, condarc):
 
     # setup mocks
     keyring(None)
-    mocker.patch("conda_auth.cli.prompt_text", return_value=username)
-    mocker.patch("conda_auth.cli.prompt_secret", return_value=secret)
+    mocker.patch("conda_auth.cli.channel.prompt_text", return_value=username)
+    mocker.patch("conda_auth.cli.channel.prompt_secret", return_value=secret)
 
     # run command
     result = runner.invoke(auth, ["login", channel_name, "--basic"])
@@ -125,8 +125,8 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
 
     # Transport validation happens before interactive secret prompts.
     keyring_mock, _ = keyring(None)
-    monkeypatch.setattr("conda_auth.cli.prompt_text", fail_prompt)
-    monkeypatch.setattr("conda_auth.cli.prompt_secret", fail_prompt)
+    monkeypatch.setattr("conda_auth.cli.channel.prompt_text", fail_prompt)
+    monkeypatch.setattr("conda_auth.cli.channel.prompt_secret", fail_prompt)
 
     result = runner.invoke(auth, args)
     exc_type, exception, _ = result.exc_info
@@ -253,7 +253,7 @@ def test_login_reports_user_condarc_read_error(monkeypatch, runner, keyring):
 
     keyring_mock, _ = keyring(None)
     monkeypatch.setattr(
-        "conda_auth.cli.ConfigurationFile.from_user_condarc",
+        "conda_auth.cli.channel.ConfigurationFile.from_user_condarc",
         lambda: UnreadableConfig(),
     )
 
@@ -350,7 +350,7 @@ def test_login_does_not_verify_without_verify_option(monkeypatch, runner, keyrin
     def verify_credentials(channel, record):
         raise AssertionError("Credential verification should be opt-in")
 
-    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+    monkeypatch.setattr("conda_auth.cli.channel.verify_channel_credentials", verify_credentials)
 
     result = runner.invoke(
         auth,
@@ -368,7 +368,7 @@ def test_login_verify_uses_stored_record(monkeypatch, runner, keyring, condarc):
     def verify_credentials(channel, record):
         verification_calls.append((channel, record))
 
-    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+    monkeypatch.setattr("conda_auth.cli.channel.verify_channel_credentials", verify_credentials)
 
     result = runner.invoke(
         auth,
@@ -405,7 +405,7 @@ def test_login_verify_failure_removes_credential_and_auth_settings(
     def verify_credentials(channel, record):
         raise CondaAuthError("Could not verify credentials")
 
-    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+    monkeypatch.setattr("conda_auth.cli.channel.verify_channel_credentials", verify_credentials)
 
     result = runner.invoke(
         auth,
@@ -446,8 +446,8 @@ def test_login_verify_failure_removes_config_before_credential(
         events.append("delete-credential")
         delete_credential(target)
 
-    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
-    monkeypatch.setattr("conda_auth.cli.storage.delete_credential", delete_record)
+    monkeypatch.setattr("conda_auth.cli.channel.verify_channel_credentials", verify_credentials)
+    monkeypatch.setattr("conda_auth.cli.channel.storage.delete_credential", delete_record)
     condarc.__exit__.side_effect = lambda *_: events.append("write-config")
 
     result = runner.invoke(
@@ -491,9 +491,9 @@ def test_login_verify_failure_revokes_oauth_record(monkeypatch, runner, keyring,
     def revoke_record(record):
         revoked.append(record)
 
-    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
-    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
-    monkeypatch.setattr("conda_auth.cli.revoke_oauth_record", revoke_record)
+    monkeypatch.setattr("conda_auth.cli.channel.perform_oauth_login", perform_oauth_login)
+    monkeypatch.setattr("conda_auth.cli.channel.verify_channel_credentials", verify_credentials)
+    monkeypatch.setattr("conda_auth.cli.channel.revoke_oauth_record", revoke_record)
 
     result = runner.invoke(
         auth,
@@ -520,7 +520,7 @@ def test_login_token(monkeypatch, runner, keyring, condarc, context_factory):
     channel_name = "tester"
 
     # setup mocks
-    monkeypatch.setattr("conda_auth.cli.context", context_factory())
+    monkeypatch.setattr("conda_auth.cli.channel.context", context_factory())
     keyring(None)
 
     result = runner.invoke(auth, ["login", channel_name, "--token", "token"])
@@ -626,7 +626,7 @@ def test_login_oauth_json_routes_interactive_output_to_stderr(
             client_id=config.client_id,
         )
 
-    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+    monkeypatch.setattr("conda_auth.cli.channel.perform_oauth_login", perform_oauth_login)
 
     result = runner.invoke(
         auth,
@@ -656,7 +656,7 @@ def test_login_token_no_options(monkeypatch, runner, keyring, condarc):
 
     # setup mocks
     keyring(None)
-    monkeypatch.setattr("conda_auth.cli.prompt_secret", lambda prompt: "token")
+    monkeypatch.setattr("conda_auth.cli.channel.prompt_secret", lambda prompt: "token")
 
     result = runner.invoke(auth, ["login", channel_name, "--token"])
 
@@ -714,11 +714,11 @@ def test_login_infers_auth_type_from_external_channel_settings(
     channel = "https://repo.example.com/channel"
     keyring(None)
     monkeypatch.setattr(
-        "conda_auth.cli.context",
+        "conda_auth.cli.channel.context",
         SimpleNamespace(channel_settings=[{"channel": channel, "auth": auth_type}]),
     )
-    monkeypatch.setattr("conda_auth.cli.prompt_text", lambda prompt: "user")
-    monkeypatch.setattr("conda_auth.cli.prompt_secret", lambda prompt: "secret")
+    monkeypatch.setattr("conda_auth.cli.channel.prompt_text", lambda prompt: "user")
+    monkeypatch.setattr("conda_auth.cli.channel.prompt_secret", lambda prompt: "secret")
 
     result = runner.invoke(auth, ["login", channel])
 
@@ -740,7 +740,7 @@ def test_login_uses_external_oauth_settings_without_copying_them(
     captured = []
     keyring(None)
     monkeypatch.setattr(
-        "conda_auth.cli.context",
+        "conda_auth.cli.channel.context",
         SimpleNamespace(
             channel_settings=[
                 {
@@ -766,7 +766,7 @@ def test_login_uses_external_oauth_settings_without_copying_them(
             client_id=config.client_id,
         )
 
-    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+    monkeypatch.setattr("conda_auth.cli.channel.perform_oauth_login", perform_oauth_login)
 
     result = runner.invoke(auth, ["login", channel])
 
@@ -783,7 +783,7 @@ def test_login_rejects_override_of_external_auth_type(monkeypatch, runner, keyri
     channel = "https://repo.example.com/channel"
     keyring_mock, _ = keyring(None)
     monkeypatch.setattr(
-        "conda_auth.cli.context",
+        "conda_auth.cli.channel.context",
         SimpleNamespace(channel_settings=[{"channel": channel, "auth": "oauth2"}]),
     )
 
