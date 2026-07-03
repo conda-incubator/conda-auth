@@ -1,9 +1,75 @@
 import sys
 from contextlib import redirect_stderr, redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import StringIO
+from typing import Any
 
 import pytest
+
+
+@dataclass
+class FakeContext:
+    channel_settings: list[dict[str, object]] = field(default_factory=list)
+    channels: tuple[str, ...] = ()
+
+
+@dataclass
+class FakeCondarc:
+    content: dict[str, Any] = field(default_factory=dict)
+    exit_side_effect: BaseException | None = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.exit_side_effect is not None:
+            raise self.exit_side_effect
+        return None
+
+
+@dataclass
+class FakeRequest:
+    headers: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class RecordingKeyring:
+    secret: str | None
+    get_password_calls: list[tuple[str, str]] = field(default_factory=list)
+    set_password_calls: list[tuple[str, str, str]] = field(default_factory=list)
+    delete_password_calls: list[tuple[str, str]] = field(default_factory=list)
+    get_password_side_effect: BaseException | None = None
+    set_password_side_effect: BaseException | None = None
+    delete_password_side_effect: BaseException | None = None
+
+    def get_password(self, key_id: str, username: str) -> str | None:
+        self.get_password_calls.append((key_id, username))
+        if self.get_password_side_effect is not None:
+            raise self.get_password_side_effect
+        return self.secret
+
+    def set_password(self, key_id: str, username: str, password: str) -> None:
+        self.set_password_calls.append((key_id, username, password))
+        if self.set_password_side_effect is not None:
+            raise self.set_password_side_effect
+
+    def delete_password(self, key_id: str, username: str) -> None:
+        self.delete_password_calls.append((key_id, username))
+        if self.delete_password_side_effect is not None:
+            raise self.delete_password_side_effect
+
+
+@dataclass
+class RecordingGetKeyring:
+    backend: RecordingKeyring
+    side_effect: BaseException | type[BaseException] | None = None
+    calls: list[tuple] = field(default_factory=list)
+
+    def __call__(self):
+        self.calls.append(())
+        if self.side_effect is not None:
+            raise self.side_effect
+        return self.backend
 
 
 @dataclass
@@ -84,6 +150,19 @@ def runner():
     CLI test runner used for all tests
     """
     yield ArgparseRunner()
+
+
+@pytest.fixture
+def context_factory():
+    def _context_factory(channel_settings=None, channels=()):
+        return FakeContext(channel_settings=channel_settings or [], channels=channels)
+
+    return _context_factory
+
+
+@pytest.fixture
+def request_factory():
+    return FakeRequest
 
 
 @pytest.fixture

@@ -35,15 +35,15 @@ class TokenAuthManager(AuthManager):
     def get_keyring_id(self, channel: Channel) -> str:
         return f"{PLUGIN_NAME}::{TOKEN_NAME}::{channel.canonical_name}"
 
-    def _fetch_secret(
-        self, channel: Channel, settings: Mapping[str, str | None]
-    ) -> tuple[str, str]:
+    def _fetch_secret(self, channel: Channel, settings: Mapping[str, object]) -> tuple[str, str]:
         """
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for secret.
         """
         # First tried the value we passed in
         token = settings.get(TOKEN_PARAM_NAME)
+        if token is not None and not isinstance(token, str):
+            raise CondaAuthError("Token not found")
 
         if token is None:
             # Try password manager if there was nothing there
@@ -55,7 +55,7 @@ class TokenAuthManager(AuthManager):
 
         return USERNAME, token
 
-    def remove_secret(self, channel: Channel, settings: Mapping[str, str | None]) -> None:
+    def remove_secret(self, channel: Channel, settings: Mapping[str, object]) -> None:
         keyring_id = self.get_keyring_id(channel)
 
         storage.delete_password(keyring_id, USERNAME)

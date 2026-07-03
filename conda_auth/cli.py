@@ -12,6 +12,7 @@ from conda.common.serialize import json, yaml
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 
+from .constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from .exceptions import CondaAuthError
 from .handlers import (
     HTTP_BASIC_AUTH_NAME,
@@ -19,6 +20,10 @@ from .handlers import (
     AuthManager,
     basic_auth_manager,
     token_auth_manager,
+)
+from .handlers.base import (
+    allows_plaintext_http,
+    validate_secure_channel,
 )
 
 # Constants
@@ -39,6 +44,7 @@ AUTH_CHANNEL_SETTING_KEYS = frozenset(
         "username",
         "password",
         "token",
+        AUTH_ALLOW_PLAINTEXT_HTTP_PARAM,
     )
 )
 
@@ -72,6 +78,8 @@ def get_updated_channel_settings(
     channel: str,
     auth_type: str,
     username: str | None = None,
+    *,
+    allow_plaintext_http: bool = False,
 ) -> list:
     """
     Replace the auth-owned settings for a single channel.
@@ -97,6 +105,8 @@ def get_updated_channel_settings(
     updated_settings["auth"] = auth_type
     if username is not None:
         updated_settings["username"] = username
+    if allow_plaintext_http:
+        updated_settings[AUTH_ALLOW_PLAINTEXT_HTTP_PARAM] = True
 
     if last_channel_index is None:
         return [*channel_settings, updated_settings]
@@ -112,6 +122,8 @@ def update_channel_settings(
     channel: str,
     auth_type: str,
     username: str | None = None,
+    *,
+    allow_plaintext_http: bool = False,
 ) -> None:
     """
     Update the user's channel auth settings via conda's configuration file API.
@@ -125,6 +137,7 @@ def update_channel_settings(
         channel,
         auth_type,
         username,
+        allow_plaintext_http=allow_plaintext_http,
     )
 
 
@@ -188,7 +201,10 @@ def login(channel: Channel, **kwargs):
     Log in to a channel by storing the credentials or tokens associated with it
     """
     auth_type, auth_manager = get_auth_manager(**kwargs)
+    allow_plaintext_http = allows_plaintext_http(kwargs)
     extra_params = {param: kwargs.get(param) for param in auth_manager.get_config_parameters()}
+    if allow_plaintext_http:
+        extra_params[AUTH_ALLOW_PLAINTEXT_HTTP_PARAM] = True
     username, secret = auth_manager.fetch_secret(channel, extra_params, use_cache=False)
 
     try:
@@ -196,13 +212,24 @@ def login(channel: Channel, **kwargs):
         if auth_type == TOKEN_NAME:
             config_username = None
         with ConfigurationFile.from_user_condarc() as config:
-            update_channel_settings(config, channel.canonical_name, auth_type, config_username)
+            update_channel_settings(
+                config,
+                channel.canonical_name,
+                auth_type,
+                config_username,
+                allow_plaintext_http=allow_plaintext_http,
+            )
     except (CondaError, OSError, yaml.YAMLError) as exc:
         auth_manager.cache_clear(channel.canonical_name)
         raise CondaAuthError(str(exc))
 
     try:
-        auth_manager.save_credentials(channel, username, secret)
+        auth_manager.save_credentials(
+            channel,
+            username,
+            secret,
+            allow_plaintext_http=allow_plaintext_http,
+        )
     except Exception as credential_error:
         auth_manager.cache_clear(channel.canonical_name)
         try:
@@ -285,6 +312,11 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         "--password",
         help="Password to use for private channels using HTTP Basic Authentication",
     )
+    login_parser.add_argument(
+        "--allow-plaintext-http",
+        action="store_true",
+        help="Allow credentials to be used over plaintext HTTP for this channel",
+    )
     add_parser_json(login_parser)
     login_parser.set_defaults(parser=login_parser)
 
@@ -328,9 +360,21 @@ def auth(args: argparse.Namespace) -> None:
                 raise CondaAuthError("Option 'username' cannot be used with 'token'")
             if args.password is not None:
                 raise CondaAuthError("Option 'password' cannot be used with 'token'")
+
+        channel = Channel(args.channel)
+        validate_secure_channel(
+            channel,
+            allow_plaintext_http=args.allow_plaintext_http,
+        )
+
+        if token is not None:
             if token is PROMPT_VALUE:
                 token = prompt_secret("Token: ")
-            login(Channel(args.channel), token=token)
+            login(
+                channel,
+                token=token,
+                auth_allow_plaintext_http=args.allow_plaintext_http,
+            )
             output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
             return
 
@@ -342,7 +386,13 @@ def auth(args: argparse.Namespace) -> None:
         if password is None:
             password = prompt_secret("Password: ")
 
-        login(Channel(args.channel), basic=True, username=username, password=password)
+        login(
+            channel,
+            basic=True,
+            username=username,
+            password=password,
+            auth_allow_plaintext_http=args.allow_plaintext_http,
+        )
         output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
     elif args.command == "logout":
         logout(Channel(args.channel))

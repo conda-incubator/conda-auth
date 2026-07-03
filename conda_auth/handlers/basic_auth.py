@@ -8,7 +8,7 @@ from collections.abc import Mapping
 
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
-from requests.auth import _basic_auth_str
+from requests.auth import HTTPBasicAuth
 
 from ..constants import PLUGIN_NAME
 from ..exceptions import CondaAuthError
@@ -35,9 +35,7 @@ class BasicAuthManager(AuthManager):
     def get_keyring_id(self, channel: Channel):
         return f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel.canonical_name}"
 
-    def _fetch_secret(
-        self, channel: Channel, settings: Mapping[str, str | None]
-    ) -> tuple[str, str]:
+    def _fetch_secret(self, channel: Channel, settings: Mapping[str, object]) -> tuple[str, str]:
         """
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for the credentials.
@@ -47,7 +45,7 @@ class BasicAuthManager(AuthManager):
 
         return username, password
 
-    def remove_secret(self, channel: Channel, settings: Mapping[str, str | None]) -> None:
+    def remove_secret(self, channel: Channel, settings: Mapping[str, object]) -> None:
         keyring_id = self.get_keyring_id(channel)
         username = self.get_username(settings)
 
@@ -59,25 +57,25 @@ class BasicAuthManager(AuthManager):
     def get_config_parameters(self) -> tuple[str, ...]:
         return USERNAME_PARAM_NAME, PASSWORD_PARAM_NAME
 
-    def get_username(self, settings: Mapping[str, str | None]):
+    def get_username(self, settings: Mapping[str, object]):
         """
         Attempts to find username in settings and falls back to prompting user for it if not found.
         """
         username = settings.get(USERNAME_PARAM_NAME)
 
-        if username is None:
+        if not isinstance(username, str):
             raise CondaAuthError("Username not found")
 
         return username
 
-    def get_password(
-        self, username: str, settings: Mapping[str, str | None], channel: Channel
-    ) -> str:
+    def get_password(self, username: str, settings: Mapping[str, object], channel: Channel) -> str:
         """
         Attempts to get password and falls back to prompting the user for it if not found.
         """
         # First see if a value has been passed in
         password = settings.get(PASSWORD_PARAM_NAME)
+        if password is not None and not isinstance(password, str):
+            raise CondaAuthError("Password not found")
 
         # Now try retrieving it from the password manager
         if password is None:
@@ -112,6 +110,7 @@ class BasicAuthHandler(ChannelAuthBase):
             raise CondaAuthError(
                 f"Unable to find user credentials for requests with channel {channel_name}"
             )
+        self._auth = HTTPBasicAuth(self.username, self.password)
 
     def __eq__(self, other):
         return all(
@@ -125,5 +124,4 @@ class BasicAuthHandler(ChannelAuthBase):
         return not self == other
 
     def __call__(self, r):
-        r.headers["Authorization"] = _basic_auth_str(self.username, self.password)
-        return r
+        return self._auth(r)

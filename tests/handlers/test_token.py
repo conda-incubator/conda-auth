@@ -7,9 +7,11 @@ from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from keyring.errors import PasswordDeleteError
 
+from conda_auth.constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.token import (
     TOKEN_NAME,
+    TOKEN_PARAM_NAME,
     USERNAME,
     TokenAuthHandler,
     TokenAuthManager,
@@ -44,17 +46,18 @@ def test_is_anaconda_dot_org(channel_name, expected):
     assert is_anaconda_dot_org(channel_name) == expected
 
 
-def test_token_auth_manager_no_token(mocker, keyring):
+@pytest.mark.parametrize(
+    "settings",
+    ({}, {TOKEN_PARAM_NAME: 1}),
+    ids=("missing", "non-string"),
+)
+def test_token_auth_manager_rejects_missing_or_invalid_token(keyring, settings):
     """
-    Test to make sure when there is no token set, an exception is raised
+    Test to make sure missing and invalid tokens are rejected.
     """
-    token = "token"
-    settings = {}
     channel = Channel("tester")
 
     # setup mocks
-    input_mock = mocker.patch("conda_auth.handlers.token.input")
-    input_mock.return_value = token
     keyring(None)
 
     # run code under test
@@ -62,14 +65,24 @@ def test_token_auth_manager_no_token(mocker, keyring):
         manager.store(channel, settings)
 
 
-def test_token_auth_manager_with_token(keyring):
-    """
-    Test to make sure when there is a token set, we are able to set a new token via the ``input``
-    function.
-    """
-    token = "token"
-    settings = {"token": token}
-    channel = Channel("tester")
+@pytest.mark.parametrize(
+    ("channel_name", "settings"),
+    (
+        ("tester", {TOKEN_PARAM_NAME: "token"}),
+        (
+            "http://repo.example.com/private",
+            {
+                TOKEN_PARAM_NAME: "token",
+                AUTH_ALLOW_PLAINTEXT_HTTP_PARAM: True,
+            },
+        ),
+    ),
+    ids=("secure", "explicit-plaintext-http"),
+)
+def test_token_auth_manager_with_token(keyring, channel_name, settings):
+    """Valid tokens are cached for supported transports."""
+    token = settings[TOKEN_PARAM_NAME]
+    channel = Channel(channel_name)
 
     # setup mocks
     keyring(None)
@@ -193,6 +206,57 @@ def test_token_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
     TokenAuthHandler(channel_name)
 
     keyring_mock.get_password.assert_called_once()
+    keyring_mock.set_password.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("channel_name", "message"),
+    (
+        ("http://example.com/private-channel", "insecure HTTP channel"),
+        ("ftp://example.com/private-channel", "unsupported channel scheme"),
+        ("s3://bucket/private-channel", "unsupported channel scheme"),
+        ("file:///tmp/private-channel", "unsupported channel scheme"),
+    ),
+    ids=("remote-http", "ftp", "s3", "file"),
+)
+def test_token_auth_handler_rejects_unsupported_transports_before_keyring(
+    monkeypatch, keyring, context_factory, channel_name, message
+):
+    """Unsupported transports never receive token credentials."""
+
+    # Transport validation happens before reading the configured keyring token.
+    context = context_factory([{"channel": channel_name, "auth": TOKEN_NAME}])
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring("token")
+
+    with pytest.raises(CondaAuthError, match=message):
+        TokenAuthHandler(channel_name)
+
+    keyring_mock.get_password.assert_not_called()
+    keyring_mock.set_password.assert_not_called()
+
+
+def test_token_auth_handler_allows_plaintext_http_when_configured(
+    monkeypatch, keyring, context_factory, request_factory
+):
+    """Explicitly configured plaintext HTTP channels can receive token credentials."""
+    channel_name = "http://example.com/private-channel"
+    token = "token"
+
+    # The opt-in is read from channel_settings at request-auth time.
+    context = context_factory(
+        [{"channel": channel_name, "auth": TOKEN_NAME, "auth_allow_plaintext_http": "True"}]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(token)
+
+    auth_handler = TokenAuthHandler(channel_name)
+    request = auth_handler(request_factory())
+
+    assert request.headers == {"Authorization": f"Bearer {token}"}
+    keyring_mock.get_password.assert_called_once_with(
+        "conda-auth::token::http://example.com/private-channel", USERNAME
+    )
     keyring_mock.set_password.assert_not_called()
 
 
