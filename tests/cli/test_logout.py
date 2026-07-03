@@ -16,7 +16,7 @@ def test_logout_of_active_session(mocker, runner, keyring, condarc):
     username = "user"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring_mock, _ = keyring(secret)
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
@@ -62,7 +62,7 @@ def test_logout_of_active_session_json(mocker, runner, keyring, condarc):
     username = "user"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring(secret)
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
@@ -90,7 +90,7 @@ def test_logout_does_not_remove_secret_when_condarc_update_fails(mocker, runner,
     channel_name = "tester"
     username = "user"
 
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring_mock, _ = keyring("password")
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
@@ -117,7 +117,7 @@ def test_logout_refuses_when_auth_settings_are_not_in_user_condarc(
     username = "user"
 
     # Active auth can come from system or environment config, not just the user condarc.
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring_mock, _ = keyring("password")
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
@@ -142,7 +142,7 @@ def test_logout_of_non_existing_session(mocker, runner, keyring):
     channel_name = "tester"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
+    mock_context = mocker.patch("conda_auth.cli.channel.context")
     keyring(None)
     mock_context.channel_settings = []
 
