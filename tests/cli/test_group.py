@@ -1,3 +1,5 @@
+from argparse import Namespace
+
 import pytest
 
 from conda_auth.cli import auth, get_auth_manager, prompt_secret, prompt_text
@@ -20,6 +22,11 @@ def test_auth_wrapper(runner):
 
     assert result.exit_code == 0, result.output
     assert "Commands for handling authentication within conda" in result.output
+
+
+def test_auth_rejects_unknown_command():
+    with pytest.raises(CondaAuthError, match="Unknown command: unknown"):
+        auth(Namespace(command="unknown"))
 
 
 def test_prompt_text_uses_input(monkeypatch):
