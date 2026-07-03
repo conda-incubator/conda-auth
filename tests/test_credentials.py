@@ -50,3 +50,18 @@ def test_credential_record_from_dict_normalizes_values(
     assert record.scopes == expected_scopes
     assert record.username == expected_username
     assert record.expires_at == expected_expires_at
+
+
+def test_credential_record_round_trips_oauth_client_secret():
+    record = CredentialRecord(
+        target="tester",
+        auth_type="oauth2",
+        client_id="client",
+        client_secret="secret",
+    )
+
+    serialized = record.to_dict()
+
+    assert serialized["client_secret"] == "secret"
+    assert CredentialRecord.from_dict(serialized) == record
+    assert "client_secret" not in record.to_status_entry()

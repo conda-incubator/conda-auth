@@ -49,6 +49,9 @@ class CredentialRecord:
     client_id: str | None = None
     """OAuth 2.0 client identifier used for refresh and revocation."""
 
+    client_secret: str | None = None
+    """OAuth 2.0 client secret used for refresh and revocation."""
+
     issuer_url: str | None = None
     """OAuth 2.0 issuer URL used for discovery and status output."""
 
@@ -79,6 +82,7 @@ class CredentialRecord:
             token_endpoint=_optional_str(data.get("token_endpoint")),
             revocation_endpoint=_optional_str(data.get("revocation_endpoint")),
             client_id=_optional_str(data.get("client_id")),
+            client_secret=_optional_str(data.get("client_secret")),
             issuer_url=_optional_str(data.get("issuer_url")),
             scopes=scopes,
         )
@@ -100,6 +104,7 @@ class CredentialRecord:
                 "token_endpoint": self.token_endpoint,
                 "revocation_endpoint": self.revocation_endpoint,
                 "client_id": self.client_id,
+                "client_secret": self.client_secret,
                 "issuer_url": self.issuer_url,
                 "scopes": list(self.scopes),
             }.items()

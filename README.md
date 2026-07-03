@@ -5,7 +5,8 @@ A conda plugin for handling authenticated access to private channels.
 Conda auth currently supports the following types of authentication:
 
 - HTTP Basic Authentication
-- token authentication
+- bearer/header token authentication
+- OAuth 2.0/OIDC user login
 
 On top of this, conda auth supports session management via two subcommands for logging into services (`conda auth login`) and logging out of services (`conda auth logout`).
 
@@ -27,7 +28,15 @@ conda auth login https://example.com/my-protected-channel --basic
 **Log in** to an anaconda.org channel with a token:
 
 ```
-conda auth login my-private-channel --token
+conda auth login https://example.com/my-protected-channel --token
+```
+
+**Log in** to a channel with OAuth 2.0/OIDC:
+
+```
+conda auth login https://example.com/my-protected-channel --oauth2 \
+  --oauth-issuer-url https://idp.example.com \
+  --oauth-client-id my-client
 ```
 
 **Log out** of a channel to remove credentials from your computer:
