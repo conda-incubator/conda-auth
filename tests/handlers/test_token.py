@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
-from keyring.errors import PasswordDeleteError
 
 from conda_auth.constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
+from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.token import (
     TOKEN_NAME,
@@ -94,6 +94,34 @@ def test_token_auth_manager_with_token(keyring, channel_name, settings):
     assert manager._cache == {channel.canonical_name: (USERNAME, token)}
 
 
+def test_token_legacy_operations_require_keyring(mocker):
+    mock_storage = mocker.patch("conda_auth.handlers.token.storage")
+    mock_storage.backend = object()
+    token_manager = TokenAuthManager()
+    channel = Channel("tester")
+
+    assert token_manager.migrate_legacy_credential_record(channel, None, "tester") is None
+    token_manager.delete_legacy_credential_record(channel, None, "tester")
+
+
+def test_token_legacy_migration_uses_auth_target(keyring):
+    keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[("conda-auth::token::shared", USERNAME)] = "secret"
+
+    record = TokenAuthManager().migrate_legacy_credential_record(
+        Channel("tester"),
+        None,
+        "shared",
+    )
+
+    assert record == CredentialRecord(
+        target="shared",
+        auth_type=TOKEN_NAME,
+        username=USERNAME,
+        token="secret",
+    )
+
+
 def test_basic_auth_manager_remove_existing_secret(keyring):
     """
     Test to make sure that removing a password that exist works.
@@ -111,7 +139,10 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
     manager.remove_secret(channel, settings)
 
     # make assertions
-    keyring_mock.delete_password.assert_called_once()
+    assert keyring_mock.delete_password_calls == [
+        ("conda-auth::credential::tester", "credential"),
+        ("conda-auth::token::tester", USERNAME),
+    ]
 
 
 def test_basic_auth_manager_remove_non_existing_secret(keyring):
@@ -119,20 +150,17 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
     Test make sure that when removing a secret that does not exist, the appropriate
     exception and message is raised and shown.
     """
-    secret = "secret"
     settings = {
         "username": USERNAME,
     }
     channel = Channel("tester")
 
     # setup mocks
-    keyring_mock, _ = keyring(secret)
-    message = "Secret not found."
-    keyring_mock.delete_password.side_effect = PasswordDeleteError(message)
+    keyring_mock, _ = keyring(None)
 
     # make assertions
-    with pytest.raises(CondaAuthError, match=f"Unable to remove secret: {message}"):
-        manager.remove_secret(channel, settings)
+    manager.remove_secret(channel, settings)
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 def test_token_auth_handler_with_anaconda_dot_org_token(mocker, keyring):
@@ -158,7 +186,10 @@ def test_token_auth_handler_with_anaconda_dot_org_token(mocker, keyring):
     request = auth_handler(request)
 
     assert request.headers == {"Authorization": f"token {token}"}
-    keyring_mock.get_password.assert_called_once()
+    assert keyring_mock.get_password_calls == [
+        ("conda-auth::credential::channel", "credential"),
+        ("conda-auth::token::channel", USERNAME),
+    ]
     keyring_mock.set_password.assert_not_called()
 
 
@@ -185,7 +216,10 @@ def test_token_auth_handler_with_bearer_token(mocker, keyring):
     request = auth_handler(request)
 
     assert request.headers == {"Authorization": f"Bearer {token}"}
-    keyring_mock.get_password.assert_called_once()
+    assert keyring_mock.get_password_calls == [
+        ("conda-auth::credential::http://localhost", "credential"),
+        ("conda-auth::token::http://localhost", USERNAME),
+    ]
     keyring_mock.set_password.assert_not_called()
 
 
@@ -205,7 +239,10 @@ def test_token_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
     TokenAuthHandler(channel_name)
     TokenAuthHandler(channel_name)
 
-    keyring_mock.get_password.assert_called_once()
+    assert keyring_mock.get_password_calls == [
+        ("conda-auth::credential::http://localhost", "credential"),
+        ("conda-auth::token::http://localhost", USERNAME),
+    ]
     keyring_mock.set_password.assert_not_called()
 
 
@@ -254,9 +291,10 @@ def test_token_auth_handler_allows_plaintext_http_when_configured(
     request = auth_handler(request_factory())
 
     assert request.headers == {"Authorization": f"Bearer {token}"}
-    keyring_mock.get_password.assert_called_once_with(
-        "conda-auth::token::http://example.com/private-channel", USERNAME
-    )
+    assert keyring_mock.get_password_calls == [
+        ("conda-auth::credential::http://example.com/private-channel", "credential"),
+        ("conda-auth::token::http://example.com/private-channel", USERNAME),
+    ]
     keyring_mock.set_password.assert_not_called()
 
 

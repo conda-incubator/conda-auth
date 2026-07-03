@@ -4,13 +4,32 @@ import pytest
 from conda.models.channel import Channel
 
 from conda_auth.constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
+from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.base import (
+    AuthManager,
     allows_plaintext_http,
     get_url_host,
     is_loopback_host,
     validate_secure_channel,
 )
+
+
+class StubAuthManager(AuthManager):
+    def _fetch_secret(self, channel, settings):
+        raise NotImplementedError
+
+    def remove_secret(self, channel, settings):
+        raise NotImplementedError
+
+    def get_auth_type(self):
+        return "test"
+
+    def get_config_parameters(self):
+        return ()
+
+    def get_auth_class(self):
+        return object
 
 
 @pytest.mark.parametrize(
@@ -99,3 +118,33 @@ def test_is_loopback_host(host, expected):
 )
 def test_allows_plaintext_http(settings, expected):
     assert allows_plaintext_http(settings) is expected
+
+
+def test_auth_manager_builds_default_credential_record():
+    channel = Channel("tester")
+
+    record = StubAuthManager().create_credential_record(channel, "username", "password")
+
+    assert record == CredentialRecord(
+        target="tester",
+        auth_type="test",
+        username="username",
+        password="password",
+    )
+
+
+def test_auth_manager_returns_stored_credential_record(mocker):
+    channel = Channel("tester")
+    record = CredentialRecord(target="tester", auth_type="test")
+    mock_storage = mocker.patch("conda_auth.handlers.base.storage")
+    mock_storage.get_credential.return_value = record
+
+    assert StubAuthManager().get_credential_record(channel) == record
+
+
+def test_auth_manager_default_legacy_credential_behavior():
+    channel = Channel("tester")
+    auth_manager = StubAuthManager()
+
+    assert auth_manager.migrate_legacy_credential_record(channel, None, "tester") is None
+    assert auth_manager.legacy_credential_targets(channel, "shared") == ("shared", "tester")

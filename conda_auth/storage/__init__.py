@@ -3,6 +3,7 @@ from __future__ import annotations
 from keyring import get_keyring
 from keyring.errors import NoKeyringError
 
+from ..credentials import CredentialRecord
 from ..exceptions import CondaAuthError
 from .base import Storage
 from .keyring import KeyringStorage
@@ -44,14 +45,14 @@ class LazyStorage(Storage):
 
         return self._storage
 
-    def get_password(self, key_id: str, username: str) -> str | None:
-        return self.backend.get_password(key_id, username)
+    def set_credential(self, record: CredentialRecord) -> None:
+        return self.backend.set_credential(record)
 
-    def set_password(self, key_id: str, username: str, password: str) -> None:
-        return self.backend.set_password(key_id, username, password)
+    def get_credential(self, target: str) -> CredentialRecord | None:
+        return self.backend.get_credential(target)
 
-    def delete_password(self, key_id: str, username: str) -> None:
-        return self.backend.delete_password(key_id, username)
+    def delete_credential(self, target: str) -> None:
+        return self.backend.delete_credential(target)
 
 
 storage = LazyStorage()

@@ -115,7 +115,7 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
 
 
 @pytest.mark.parametrize(
-    ("args", "expected_settings", "expected_keyring_call"),
+    ("args", "expected_settings", "expected_record"),
     (
         (
             [
@@ -131,10 +131,15 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
             {
                 "channel": "http://example.com/private-channel",
                 "auth": "http-basic",
-                "username": "user",
+                "auth_target": "http://example.com/private-channel",
                 "auth_allow_plaintext_http": True,
             },
-            ("conda-auth::http-basic::http://example.com/private-channel", "user", "password"),
+            {
+                "target": "http://example.com/private-channel",
+                "auth_type": "http-basic",
+                "username": "user",
+                "password": "password",
+            },
         ),
         (
             [
@@ -147,15 +152,21 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
             {
                 "channel": "http://example.com/private-channel",
                 "auth": "token",
+                "auth_target": "http://example.com/private-channel",
                 "auth_allow_plaintext_http": True,
             },
-            ("conda-auth::token::http://example.com/private-channel", "token", "token"),
+            {
+                "target": "http://example.com/private-channel",
+                "auth_type": "token",
+                "username": "token",
+                "token": "token",
+            },
         ),
     ),
     ids=("basic", "token"),
 )
 def test_login_allows_plaintext_http_when_explicit(
-    runner, keyring, condarc, args, expected_settings, expected_keyring_call
+    runner, keyring, condarc, args, expected_settings, expected_record
 ):
     """
     Persists explicit plaintext HTTP opt-in with the channel auth settings.
@@ -166,7 +177,11 @@ def test_login_allows_plaintext_http_when_explicit(
 
     assert result.exit_code == 0, result.output
     assert condarc.content == {"channel_settings": [expected_settings]}
-    keyring_mock.set_password.assert_called_once_with(*expected_keyring_call)
+    keyring_mock.set_password.assert_called_once()
+    key, username, payload = keyring_mock.set_password_calls[0]
+    assert key == "conda-auth::credential::http://example.com/private-channel"
+    assert username == "credential"
+    assert json.loads(payload) == expected_record
 
 
 def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring, condarc):

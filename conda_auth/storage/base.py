@@ -2,24 +2,26 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from ..credentials import CredentialRecord
+
 
 class Storage(ABC):
     """ABC class for all credential storage backends"""
 
     @abstractmethod
-    def set_password(self, key_id: str, username: str, password: str) -> None:
+    def set_credential(self, record: CredentialRecord) -> None:
         """
-        Sets the password for a specific ``key_id``
-        """
-
-    @abstractmethod
-    def get_password(self, key_id: str, username: str) -> str | None:
-        """
-        Gets the password for a specific ``key_id``
+        Store a structured credential record.
         """
 
     @abstractmethod
-    def delete_password(self, key_id: str, username: str) -> None:
+    def get_credential(self, target: str) -> CredentialRecord | None:
         """
-        Deletes the password for a specific ``key_id``
+        Return a structured credential record for a target.
+        """
+
+    @abstractmethod
+    def delete_credential(self, target: str) -> None:
+        """
+        Delete a structured credential record for a target.
         """

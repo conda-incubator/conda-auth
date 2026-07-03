@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from fnmatch import fnmatch
 from getpass import getpass
 from typing import Literal
 
@@ -9,6 +10,7 @@ from conda.base.context import context
 from conda.cli.condarc import ConfigurationFile
 from conda.cli.helpers import add_parser_json
 from conda.common.serialize import json, yaml
+from conda.common.url import urlparse as conda_urlparse
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 
@@ -25,6 +27,7 @@ from .handlers.base import (
     allows_plaintext_http,
     validate_secure_channel,
 )
+from .storage import storage
 
 # Constants
 AUTH_MANAGER_MAPPING = {
@@ -44,6 +47,7 @@ AUTH_CHANNEL_SETTING_KEYS = frozenset(
         "username",
         "password",
         "token",
+        "auth_target",
         AUTH_ALLOW_PLAINTEXT_HTTP_PARAM,
     )
 )
@@ -79,6 +83,7 @@ def get_updated_channel_settings(
     auth_type: str,
     username: str | None = None,
     *,
+    auth_target: str | None = None,
     allow_plaintext_http: bool = False,
 ) -> list:
     """
@@ -103,6 +108,7 @@ def get_updated_channel_settings(
         )
 
     updated_settings["auth"] = auth_type
+    updated_settings["auth_target"] = auth_target or channel
     if username is not None:
         updated_settings["username"] = username
     if allow_plaintext_http:
@@ -123,6 +129,7 @@ def update_channel_settings(
     auth_type: str,
     username: str | None = None,
     *,
+    auth_target: str | None = None,
     allow_plaintext_http: bool = False,
 ) -> None:
     """
@@ -137,6 +144,7 @@ def update_channel_settings(
         channel,
         auth_type,
         username,
+        auth_target=auth_target,
         allow_plaintext_http=allow_plaintext_http,
     )
 
@@ -202,21 +210,26 @@ def login(channel: Channel, **kwargs):
     """
     auth_type, auth_manager = get_auth_manager(**kwargs)
     allow_plaintext_http = allows_plaintext_http(kwargs)
-    extra_params = {param: kwargs.get(param) for param in auth_manager.get_config_parameters()}
+    channel_setting = channel.canonical_name
+    credential_target = channel_setting
+    extra_params = {
+        param: kwargs.get(param)
+        for param in auth_manager.get_config_parameters()
+        if kwargs.get(param) is not None
+    }
+    extra_params["auth_target"] = credential_target
     if allow_plaintext_http:
         extra_params[AUTH_ALLOW_PLAINTEXT_HTTP_PARAM] = True
     username, secret = auth_manager.fetch_secret(channel, extra_params, use_cache=False)
 
     try:
-        config_username: str | None = username
-        if auth_type == TOKEN_NAME:
-            config_username = None
         with ConfigurationFile.from_user_condarc() as config:
             update_channel_settings(
                 config,
-                channel.canonical_name,
+                channel_setting,
                 auth_type,
-                config_username,
+                None,
+                auth_target=credential_target,
                 allow_plaintext_http=allow_plaintext_http,
             )
     except (CondaError, OSError, yaml.YAMLError) as exc:
@@ -229,12 +242,14 @@ def login(channel: Channel, **kwargs):
             username,
             secret,
             allow_plaintext_http=allow_plaintext_http,
+            target=credential_target,
+            settings=extra_params,
         )
     except Exception as credential_error:
         auth_manager.cache_clear(channel.canonical_name)
         try:
             with ConfigurationFile.from_user_condarc() as config:
-                remove_channel_settings(config, channel.canonical_name)
+                remove_channel_settings(config, channel_setting)
         except (CondaError, OSError, yaml.YAMLError) as rollback_error:
             raise CondaAuthError(
                 f"{credential_error}. Failed to roll back channel settings: {rollback_error}"
@@ -272,6 +287,125 @@ def logout(channel: Channel):
 
     auth_manager.remove_secret(channel, settings)
     auth_manager.cache_clear(channel.canonical_name)
+
+
+def get_status_entries(target: str | None = None) -> list[dict[str, object]]:
+    """
+    Return redacted credential status entries.
+    """
+    entries = []
+    for credential_target in get_status_targets(target):
+        record = storage.get_credential(credential_target)
+        if record is not None:
+            entries.append(record.to_status_entry())
+    return entries
+
+
+def get_status_targets(target: str | None = None) -> tuple[str, ...]:
+    """
+    Return known configured credential targets for status output.
+    """
+    seen = set()
+    targets: list[str] = []
+
+    def add(candidate: str | None) -> None:
+        if candidate is not None and candidate not in seen:
+            seen.add(candidate)
+            targets.append(candidate)
+
+    requested_channel = Channel(target) if target is not None else None
+    requested_keys = set()
+    if target is not None and requested_channel is not None:
+        requested_keys.update((target, requested_channel.canonical_name))
+        add(target)
+        add(requested_channel.canonical_name)
+
+    for settings in context.channel_settings:
+        if not isinstance(settings, Mapping) or not settings.get("auth"):
+            continue
+
+        configured_channel = settings.get("channel")
+        if not isinstance(configured_channel, str):
+            continue
+
+        auth_target = settings.get("auth_target")
+        if not isinstance(auth_target, str):
+            auth_target = configured_channel
+
+        if requested_channel is None:
+            add(auth_target)
+        elif status_setting_matches_target(
+            configured_channel,
+            auth_target,
+            requested_channel,
+            requested_keys,
+        ):
+            add(auth_target)
+
+    return tuple(targets)
+
+
+def status_setting_matches_target(
+    configured_channel: str,
+    auth_target: str,
+    requested_channel: Channel,
+    requested_keys: set[str],
+) -> bool:
+    """
+    Return whether a configured auth setting applies to an explicit status target.
+    """
+    return (
+        configured_channel in requested_keys
+        or auth_target in requested_keys
+        or channel_matches(configured_channel, requested_channel)
+        or channel_matches(auth_target, requested_channel)
+    )
+
+
+def channel_matches(configured_channel: str, channel: Channel) -> bool:
+    """
+    Match configured channel names the same way conda selects auth handlers.
+    """
+    if configured_channel == channel.canonical_name:
+        return True
+
+    parsed_channel = conda_urlparse(channel.base_url)
+    parsed_setting = conda_urlparse(configured_channel)
+    if parsed_setting.scheme != parsed_channel.scheme:
+        return False
+
+    channel_url = parsed_channel.netloc + parsed_channel.path
+    pattern = parsed_setting.netloc + parsed_setting.path
+    return fnmatch(channel_url, pattern)
+
+
+def status(target: str | None = None) -> list[dict[str, object]]:
+    """
+    Return stored credential status entries.
+    """
+    return get_status_entries(target)
+
+
+def output_status(args: argparse.Namespace, entries: list[dict[str, object]]) -> None:
+    """
+    Output credential status in text or JSON form.
+    """
+    if getattr(args, "json", False) is True:
+        print(json.dumps({"success": True, "credentials": entries}))
+        return
+
+    if not entries:
+        print("No credentials stored")
+        return
+
+    for entry in entries:
+        target = entry.get("target", "<unknown>")
+        auth_type = entry.get("auth_type", "<unknown>")
+        expires_at = entry.get("expires_at")
+        details = [f"{target}: {auth_type}"]
+        if expires_at is not None:
+            details.append(f"expires_at={expires_at}")
+        print(" ".join(details))
 
 
 def configure_parser(parser: argparse.ArgumentParser) -> None:
@@ -327,6 +461,14 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     )
     logout_parser.add_argument("channel")
     add_parser_json(logout_parser)
+
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Show stored credentials",
+        description="Show stored credentials for authenticated channels",
+    )
+    status_parser.add_argument("channel", nargs="?")
+    add_parser_json(status_parser)
 
 
 def build_parser(prog_name: str = "conda auth") -> argparse.ArgumentParser:
@@ -397,3 +539,5 @@ def auth(args: argparse.Namespace) -> None:
     elif args.command == "logout":
         logout(Channel(args.channel))
         output_success(args, SUCCESSFUL_LOGOUT_MESSAGE)
+    elif args.command == "status":
+        output_status(args, status(args.channel))

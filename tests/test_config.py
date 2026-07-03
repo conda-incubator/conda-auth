@@ -32,6 +32,7 @@ def test_get_updated_channel_settings_preserves_existing_channel_settings():
             "channel": "tester",
             "ssl_verify": False,
             "auth": "http-basic",
+            "auth_target": "tester",
             "username": "username",
         },
         {"channel": "other", "auth": "token"},
@@ -50,6 +51,7 @@ def test_get_updated_channel_settings_updates_last_exact_channel():
             "channel": "tester",
             "ssl_verify": False,
             "auth": "http-basic",
+            "auth_target": "tester",
             "username": "username",
         },
     ]
@@ -70,6 +72,7 @@ def test_update_non_existing_condarc_file(tmp_path):
                 "channel": channel,
                 "username": username,
                 "auth": auth_type,
+                "auth_target": channel,
             }
         ]
     }
@@ -91,6 +94,7 @@ def test_update_existing_condarc_file(tmp_path):
                 "channel": channel,
                 "username": username,
                 "auth": auth_type,
+                "auth_target": channel,
             }
         ],
         "channels": ["defaults"],
