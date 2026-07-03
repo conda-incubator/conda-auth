@@ -230,6 +230,9 @@ def auth(args: argparse.Namespace) -> None:
             if args.password is not None:
                 raise CondaAuthError("Option 'password' cannot be used with 'token' or 'oauth2'")
 
+        if token is None and (args.token_header is not None or args.token_template is not None):
+            raise CondaAuthError("Token header options can only be used with 'token'")
+
         channel = Channel(args.channel)
         validate_secure_channel(
             channel,
@@ -275,6 +278,8 @@ def auth(args: argparse.Namespace) -> None:
             oauth_redirect_uri=args.oauth_redirect_uri,
             user_agent=args.user_agent,
             oauth_output_stream=oauth_output_stream,
+            token_header=args.token_header,
+            token_template=args.token_template,
             auth_allow_plaintext_http=args.allow_plaintext_http,
         )
         output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
