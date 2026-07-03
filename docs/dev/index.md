@@ -8,7 +8,7 @@ Code of Conduct <code-of-conduct>
 Release Notes <changelog>
 ```
 
-Thank you for your interest in contributing to conda auth! This is a short guide that will walk you
+Thank you for your interest in contributing to conda-auth! This is a short guide that will walk you
 through all the steps necessary to contribute code to the project.
 
 ## Finding an issue to work on
