@@ -1,21 +1,25 @@
 from __future__ import annotations
 
+import argparse
+from collections.abc import Mapping
+from getpass import getpass
 from typing import Literal
 
-import click
 from conda.base.context import context
+from conda.cli.condarc import ConfigurationFile
+from conda.cli.helpers import add_parser_json
+from conda.common.serialize import json, yaml
+from conda.exceptions import CondaError
 from conda.models.channel import Channel
 
-from .condarc import CondaRC, CondaRCError
 from .exceptions import CondaAuthError
 from .handlers import (
+    HTTP_BASIC_AUTH_NAME,
+    TOKEN_NAME,
     AuthManager,
     basic_auth_manager,
     token_auth_manager,
-    HTTP_BASIC_AUTH_NAME,
-    TOKEN_NAME,
 )
-from .options import ConditionalOption
 
 # Constants
 AUTH_MANAGER_MAPPING = {
@@ -27,11 +31,72 @@ SUCCESSFUL_LOGIN_MESSAGE = "Successfully stored credentials"
 
 SUCCESSFUL_LOGOUT_MESSAGE = "Successfully removed credentials"
 
-SUCCESSFUL_COLOR = "green"
+PROMPT_VALUE = object()
 
-FAILURE_COLOR = "red"
 
-OPTION_DEFAULT = "CONDA_AUTH_DEFAULT"
+def prompt_text(prompt: str) -> str:
+    """
+    Prompt for visible text input.
+    """
+    return input(prompt)
+
+
+def prompt_secret(prompt: str) -> str:
+    """
+    Prompt for secret input.
+    """
+    return getpass(prompt)
+
+
+def output_success(args: argparse.Namespace, message: str) -> None:
+    """
+    Output a successful command result.
+    """
+    if getattr(args, "json", False) is True:
+        print(json.dumps({"success": True, "message": message}))
+    else:
+        print(message)
+
+
+def get_updated_channel_settings(
+    channel_settings: list,
+    channel: str,
+    auth_type: str,
+    username: str | None = None,
+) -> list:
+    """
+    Replace the auth settings for a single channel.
+    """
+    updated_settings = {"channel": channel, "auth": auth_type}
+    if username is not None:
+        updated_settings["username"] = username
+
+    return [
+        settings
+        for settings in channel_settings
+        if not isinstance(settings, Mapping) or settings.get("channel") != channel
+    ] + [updated_settings]
+
+
+def update_channel_settings(
+    config: ConfigurationFile,
+    channel: str,
+    auth_type: str,
+    username: str | None = None,
+) -> None:
+    """
+    Update the user's channel auth settings via conda's configuration file API.
+    """
+    channel_settings = config.content.get("channel_settings", []) or []
+    if not isinstance(channel_settings, list):
+        raise CondaAuthError("Expected 'channel_settings' to be a list")
+
+    config.content["channel_settings"] = get_updated_channel_settings(
+        channel_settings,
+        channel,
+        auth_type,
+        username,
+    )
 
 
 def get_auth_manager(
@@ -55,58 +120,12 @@ def get_auth_manager(
     # check if auth defined maps to a valid auth manager
     if not (auth_manager := AUTH_MANAGER_MAPPING.get(auth)):
         raise CondaAuthError(
-            "Invalid authentication type. "
-            f"Valid types are: {set(AUTH_MANAGER_MAPPING)}"
+            f"Invalid authentication type. Valid types are: {set(AUTH_MANAGER_MAPPING)}"
         )
 
     return auth, auth_manager
 
 
-@click.group("auth", context_settings={"help_option_names": ["-h", "--help"]})
-def auth():
-    """
-    Commands for handling authentication within conda
-    """
-
-
-@auth.command("login")
-@click.argument("channel", callback=lambda ctx, param, value: Channel(value))
-@click.option(
-    "-b",
-    "--basic",
-    help="Save login credentials as HTTP basic authentication",
-    cls=ConditionalOption,
-    is_flag=True,
-    mutually_exclusive={"token"},
-    not_required_if={"token"},
-)
-@click.option(
-    "-u",
-    "--username",
-    help="Username to use for private channels using HTTP Basic Authentication",
-    cls=ConditionalOption,
-    prompt_when={"basic"},
-    mutually_exclusive={"token"},
-)
-@click.option(
-    "-p",
-    "--password",
-    help="Password to use for private channels using HTTP Basic Authentication",
-    cls=ConditionalOption,
-    prompt_when={"basic"},
-    hide_input=True,
-    mutually_exclusive={"token"},
-)
-@click.option(
-    "-t",
-    "--token",
-    help="Token to use for private channels using an API token",
-    cls=ConditionalOption,
-    prompt=True,
-    prompt_required=False,
-    mutually_exclusive={"basic", "username", "password"},
-    not_required_if={"basic"},
-)
 def login(channel: Channel, **kwargs):
     """
     Log in to a channel by storing the credentials or tokens associated with it
@@ -114,20 +133,15 @@ def login(channel: Channel, **kwargs):
     auth_type, auth_manager = get_auth_manager(**kwargs)
     username: str | None = auth_manager.store(channel, kwargs)
 
-    click.echo(click.style(SUCCESSFUL_LOGIN_MESSAGE, fg=SUCCESSFUL_COLOR))
-
     try:
-        condarc = CondaRC()
         if auth_type == TOKEN_NAME:
             username = None
-        condarc.update_channel_settings(channel.canonical_name, auth_type, username)
-        condarc.save()
-    except CondaRCError as exc:
+        with ConfigurationFile.from_user_condarc() as config:
+            update_channel_settings(config, channel.canonical_name, auth_type, username)
+    except (CondaError, OSError, yaml.YAMLError) as exc:
         raise CondaAuthError(str(exc))
 
 
-@auth.command("logout")
-@click.argument("channel", callback=lambda ctx, param, value: Channel(value))
 def logout(channel: Channel):
     """
     Log out of a channel by removing any credentials or tokens associated with it.
@@ -146,4 +160,104 @@ def logout(channel: Channel):
     auth_type, auth_manager = get_auth_manager(**settings)
     auth_manager.remove_secret(channel, settings)
 
-    click.echo(click.style(SUCCESSFUL_LOGOUT_MESSAGE, fg=SUCCESSFUL_COLOR))
+
+def configure_parser(parser: argparse.ArgumentParser) -> None:
+    """
+    Configure the conda auth subcommand parser.
+    """
+    parser.set_defaults(parser=parser)
+    subparsers = parser.add_subparsers(dest="command")
+
+    login_parser = subparsers.add_parser(
+        "login",
+        help="Log in to a channel",
+        description="Log in to a channel by storing the credentials or tokens associated with it",
+    )
+    login_parser.add_argument("channel")
+    auth_options = login_parser.add_mutually_exclusive_group()
+    auth_options.add_argument(
+        "-b",
+        "--basic",
+        action="store_true",
+        help="Save login credentials as HTTP basic authentication",
+    )
+    auth_options.add_argument(
+        "-t",
+        "--token",
+        nargs="?",
+        const=PROMPT_VALUE,
+        metavar="TOKEN",
+        help="Token to use for private channels using an API token",
+    )
+    login_parser.add_argument(
+        "-u",
+        "--username",
+        help="Username to use for private channels using HTTP Basic Authentication",
+    )
+    login_parser.add_argument(
+        "-p",
+        "--password",
+        help="Password to use for private channels using HTTP Basic Authentication",
+    )
+    add_parser_json(login_parser)
+    login_parser.set_defaults(parser=login_parser)
+
+    logout_parser = subparsers.add_parser(
+        "logout",
+        help="Log out of a channel",
+        description="Log out of a channel by removing any credentials or tokens associated with it",
+    )
+    logout_parser.add_argument("channel")
+    add_parser_json(logout_parser)
+
+
+def build_parser(prog_name: str = "conda auth") -> argparse.ArgumentParser:
+    """
+    Build a standalone parser for tests and direct invocation.
+    """
+    parser = argparse.ArgumentParser(
+        prog=prog_name,
+        description="Commands for handling authentication within conda",
+    )
+    configure_parser(parser)
+    return parser
+
+
+def auth(args: argparse.Namespace) -> None:
+    """
+    Commands for handling authentication within conda.
+    """
+    if args.command is None:
+        args.parser.print_help()
+        return
+
+    if args.command == "login":
+        token = args.token
+
+        if not args.basic and token is None:
+            args.parser.error("Missing option 'basic' / 'token'.")
+
+        if token is not None:
+            if args.username is not None:
+                args.parser.error("Option 'username' cannot be used with 'token'")
+            if args.password is not None:
+                args.parser.error("Option 'password' cannot be used with 'token'")
+            if token is PROMPT_VALUE:
+                token = prompt_secret("Token: ")
+            login(Channel(args.channel), token=token)
+            output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
+            return
+
+        username = args.username
+        password = args.password
+
+        if username is None:
+            username = prompt_text("Username: ")
+        if password is None:
+            password = prompt_secret("Password: ")
+
+        login(Channel(args.channel), basic=True, username=username, password=password)
+        output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
+    elif args.command == "logout":
+        logout(Channel(args.channel))
+        output_success(args, SUCCESSFUL_LOGOUT_MESSAGE)

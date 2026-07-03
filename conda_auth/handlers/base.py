@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 
 import conda.base.context
-from conda.models.channel import Channel
 from conda.base.context import context as global_context
+from conda.models.channel import Channel
 
 from ..storage import storage
 
@@ -46,9 +46,7 @@ class AuthManager(ABC):
         This method returns a "username" because this property could have been retrieved
         via user input while calling ``fetch_secret``.
         """
-        extra_params = {
-            param: settings.get(param) for param in self.get_config_parameters()
-        }
+        extra_params = {param: settings.get(param) for param in self.get_config_parameters()}
         username, secret = self.fetch_secret(channel, extra_params)
 
         self.save_credentials(channel, username, secret)

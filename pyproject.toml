@@ -6,7 +6,8 @@ build-backend = "hatchling.build"
 name = "conda-auth"
 dynamic = ["version"]
 description = "A conda plugin for handling multiple authentication schemes"
-requires-python = ">=3.8"
+authors = [{name = "Travis Hathaway", email = "travis.j.hathaway@gmail.com"}]
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 classifiers = [
   "Development Status :: 5 - Production/Stable",
@@ -15,19 +16,18 @@ classifiers = [
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy"
 ]
 dependencies = [
-  "click",
-  "conda",
+  "conda>=26.1",
   "keyring",
   "requests",
-  "ruamel.yaml",
 ]
 
 [project.entry-points.conda]
@@ -38,3 +38,96 @@ find = {}
 
 [tool.hatch.version]
 source = "vcs"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "win-64", "osx-64", "osx-arm64"]
+
+[tool.pixi.tasks]
+# Run this first; it will install conda-auth as a local package
+develop = "pip install -e ."
+
+# Test commands
+test = "pytest --doctest-modules"
+testcov = "pytest --cov=conda_auth --cov-report=xml --doctest-modules"
+testhtml = "pytest --cov=conda_auth --cov-report=html --doctest-modules"
+
+# Build commands
+build = "rattler-build build --recipe recipe.yaml"
+
+[tool.pixi.dependencies]
+python = ">=3.10"
+conda = ">=26.1"
+keyring = "*"
+requests = "*"
+
+[tool.pixi.feature.py314.dependencies]
+python = "3.14.*"
+
+[tool.pixi.feature.py313.dependencies]
+python = "3.13.*"
+
+[tool.pixi.feature.py312.dependencies]
+python = "3.12.*"
+
+[tool.pixi.feature.py311.dependencies]
+python = "3.11.*"
+
+[tool.pixi.feature.py310.dependencies]
+python = "3.10.*"
+
+[tool.pixi.feature.dev.dependencies]
+"keyrings.alt" = "*"
+pip = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-mock = "*"
+pre-commit = "*"
+rattler-build = "*"
+ruff = "*"
+ty = "*"
+
+[tool.pixi.feature.docs.dependencies]
+python = ">=3.10,<3.13"
+conda-sphinx-theme = "==0.1.3"
+linkify-it-py = "==2.0.0"
+myst-parser = "==0.18.1"
+sphinx-copybutton = "==0.5.0"
+sphinx-design = "==0.5.0"
+sphinx-sitemap = "==2.2.1"
+sphinxcontrib-applehelp = "==1.0.2"
+sphinxcontrib-devhelp = "==1.0.2"
+sphinxcontrib-htmlhelp = "==2.0.0"
+sphinxcontrib-jsmath = "==1.0.1"
+sphinxcontrib-mermaid = "==0.7.1"
+sphinxcontrib-qthelp = "==1.0.3"
+sphinxcontrib-serializinghtml = "==1.1.5"
+
+[tool.pixi.feature.docs.tasks]
+docs = "sphinx-build -b html docs docs/_build/html"
+
+[tool.pixi.environments]
+docs = { features = ["docs"], no-default-feature = true }
+dev = ["dev"]
+dev-py314 = ["dev", "py314"]
+dev-py313 = ["dev", "py313"]
+dev-py312 = ["dev", "py312"]
+dev-py311 = ["dev", "py311"]
+dev-py310 = ["dev", "py310"]
+
+[tool.pixi.activation]
+scripts = ["dev/setup.sh"]
+
+[tool.ruff]
+line-length = 99
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+ignore = ["E203", "E402", "E501", "E722", "E731"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = ["conda_auth._version"]
+
+[tool.ty.src]
+include = ["conda_auth", "tests"]

@@ -6,13 +6,13 @@ from conda.models.channel import Channel
 from keyring.errors import PasswordDeleteError
 from requests.auth import _basic_auth_str
 
-from conda_auth.handlers.basic_auth import (
-    manager,
-    BasicAuthHandler,
-    HTTP_BASIC_AUTH_NAME,
-    BasicAuthManager,
-)
 from conda_auth.exceptions import CondaAuthError
+from conda_auth.handlers.basic_auth import (
+    HTTP_BASIC_AUTH_NAME,
+    BasicAuthHandler,
+    BasicAuthManager,
+    manager,
+)
 
 
 @pytest.fixture(autouse=True)

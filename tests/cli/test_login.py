@@ -1,9 +1,13 @@
-from conda_auth.cli import auth, SUCCESSFUL_LOGIN_MESSAGE
-from conda_auth.condarc import CondaRCError
+import json
+
+import pytest
+from conda.exceptions import CondaError
+
+from conda_auth.cli import SUCCESSFUL_LOGIN_MESSAGE, auth
 from conda_auth.exceptions import CondaAuthError
 
 
-def test_login_basic_auth_no_options(runner, keyring, condarc):
+def test_login_basic_auth_no_options(mocker, runner, keyring, condarc):
     """
     Runs the login command with no additional CLI options defined (e.g. --username)
     """
@@ -13,13 +17,13 @@ def test_login_basic_auth_no_options(runner, keyring, condarc):
 
     # setup mocks
     keyring(None)
+    mocker.patch("conda_auth.cli.prompt_text", return_value=username)
+    mocker.patch("conda_auth.cli.prompt_secret", return_value=secret)
 
     # run command
-    result = runner.invoke(
-        auth, ["login", channel_name, "--basic"], input=f"{username}\n{secret}"
-    )
+    result = runner.invoke(auth, ["login", channel_name, "--basic"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
@@ -38,7 +42,7 @@ def test_login_with_options_basic_auth(runner, keyring, condarc):
         ["login", channel_name, "--basic", "--username", "test", "--password", "test"],
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
@@ -55,9 +59,9 @@ def test_login_with_invalid_auth_type(runner, keyring, condarc):
     result = runner.invoke(auth, ["login", channel_name])
     exc_type, exception, _ = result.exc_info
 
-    assert result.exit_code == 2
-    assert exc_type == SystemExit
-    assert "Error: Missing option 'basic' / 'token'." in result.stdout
+    assert result.exit_code == 2, result.output
+    assert exc_type is SystemExit
+    assert "error: Missing option 'basic' / 'token'." in result.output
 
 
 def test_login_succeeds_error_returned_when_updating_condarc(runner, keyring, condarc):
@@ -69,11 +73,12 @@ def test_login_succeeds_error_returned_when_updating_condarc(runner, keyring, co
 
     # setup mocks
     keyring(None)
-    condarc().save.side_effect = CondaRCError("Could not save file")
+    condarc.__exit__.side_effect = CondaError("Could not save file")
 
     # run command
     result = runner.invoke(
-        auth, ["login", channel_name, "--basic"], input="user\npassword"
+        auth,
+        ["login", channel_name, "--basic", "--username", "user", "--password", "password"],
     )
     exc_type, exception, _ = result.exc_info
 
@@ -94,10 +99,28 @@ def test_login_token(mocker, runner, keyring, condarc):
 
     result = runner.invoke(auth, ["login", channel_name, "--token", "token"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
 
 
-def test_login_token_no_options(runner, keyring, condarc):
+def test_login_token_json(runner, keyring, condarc):
+    """
+    Test successful login with token and JSON output.
+    """
+    channel_name = "tester"
+
+    # setup mocks
+    keyring(None)
+
+    result = runner.invoke(auth, ["login", channel_name, "--token", "token", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "success": True,
+        "message": SUCCESSFUL_LOGIN_MESSAGE,
+    }
+
+
+def test_login_token_no_options(mocker, runner, keyring, condarc):
     """
     Test successful login with token without the value being supplied at the command line
     """
@@ -105,8 +128,37 @@ def test_login_token_no_options(runner, keyring, condarc):
 
     # setup mocks
     keyring(None)
+    mocker.patch("conda_auth.cli.prompt_secret", return_value="token")
 
-    result = runner.invoke(auth, ["login", channel_name, "--token"], input="token\n")
+    result = runner.invoke(auth, ["login", channel_name, "--token"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
+
+
+@pytest.mark.parametrize(
+    "option,message",
+    (
+        ("--username", "Option 'username' cannot be used with 'token'"),
+        ("--password", "Option 'password' cannot be used with 'token'"),
+    ),
+)
+def test_login_token_rejects_basic_auth_options(runner, keyring, condarc, option, message):
+    """
+    Test to make sure token login rejects options meant for basic auth.
+    """
+    channel_name = "tester"
+
+    # setup mocks
+    keyring(None)
+
+    result = runner.invoke(
+        auth,
+        ["login", channel_name, "--token", "token", option, "value"],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert result.exit_code == 2, result.output
+    assert exc_type is SystemExit
+    assert exception.code == 2
+    assert f"error: {message}" in result.output
