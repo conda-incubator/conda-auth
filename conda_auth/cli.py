@@ -98,6 +98,22 @@ def update_channel_settings(
         username,
     )
 
+
+def remove_channel_settings(config: ConfigurationFile, channel: str) -> None:
+    """
+    Remove the user's channel auth settings via conda's configuration file API.
+    """
+    channel_settings = config.content.get("channel_settings", []) or []
+    if not isinstance(channel_settings, list):
+        raise CondaAuthError("Expected 'channel_settings' to be a list")
+
+    config.content["channel_settings"] = [
+        settings
+        for settings in channel_settings
+        if not isinstance(settings, Mapping) or settings.get("channel") != channel
+    ]
+
+
 def get_auth_manager(
     auth: str | None = None,
     basic: bool | None = None,
@@ -130,15 +146,29 @@ def login(channel: Channel, **kwargs):
     Log in to a channel by storing the credentials or tokens associated with it
     """
     auth_type, auth_manager = get_auth_manager(**kwargs)
-    username: str | None = auth_manager.store(channel, kwargs)
+    extra_params = {param: kwargs.get(param) for param in auth_manager.get_config_parameters()}
+    username, secret = auth_manager.fetch_secret(channel, extra_params, use_cache=False)
 
     try:
+        config_username: str | None = username
         if auth_type == TOKEN_NAME:
-            username = None
+            config_username = None
         with ConfigurationFile.from_user_condarc() as config:
-            update_channel_settings(config, channel.canonical_name, auth_type, username)
+            update_channel_settings(config, channel.canonical_name, auth_type, config_username)
     except (CondaError, OSError, yaml.YAMLError) as exc:
+        auth_manager.cache_clear(channel.canonical_name)
         raise CondaAuthError(str(exc))
+
+    try:
+        auth_manager.save_credentials(channel, username, secret)
+    except Exception:
+        auth_manager.cache_clear(channel.canonical_name)
+        try:
+            with ConfigurationFile.from_user_condarc() as config:
+                remove_channel_settings(config, channel.canonical_name)
+        except (CondaError, OSError, yaml.YAMLError):
+            pass
+        raise
 
 
 def logout(channel: Channel):
@@ -157,6 +187,13 @@ def logout(channel: Channel):
         raise CondaAuthError("Unable to find information about logged in session.")
 
     auth_type, auth_manager = get_auth_manager(**settings)
+
+    try:
+        with ConfigurationFile.from_user_condarc() as config:
+            remove_channel_settings(config, channel.canonical_name)
+    except (CondaError, OSError, yaml.YAMLError) as exc:
+        raise CondaAuthError(str(exc))
+
     auth_manager.remove_secret(channel, settings)
     auth_manager.cache_clear(channel.canonical_name)
 

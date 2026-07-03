@@ -1,5 +1,7 @@
 import json
 
+from conda.exceptions import CondaError
+
 from conda_auth.cli import SUCCESSFUL_LOGOUT_MESSAGE, auth
 from conda_auth.constants import PLUGIN_NAME
 from conda_auth.exceptions import CondaAuthError
@@ -21,6 +23,12 @@ def test_logout_of_active_session(mocker, runner, keyring, condarc):
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
     ]
     manager._cache = {channel_name: (username, secret)}
+    condarc.content = {
+        "channel_settings": [
+            {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username},
+            {"channel": "other", "auth": "token"},
+        ]
+    }
 
     # run command
     result = runner.invoke(auth, ["logout", channel_name])
@@ -33,6 +41,11 @@ def test_logout_of_active_session(mocker, runner, keyring, condarc):
         username,
     )
     assert channel_name not in manager._cache
+    assert condarc.content == {
+        "channel_settings": [
+            {"channel": "other", "auth": "token"},
+        ]
+    }
 
 
 def test_logout_of_active_session_json(mocker, runner, keyring, condarc):
@@ -49,6 +62,11 @@ def test_logout_of_active_session_json(mocker, runner, keyring, condarc):
     mock_context.channel_settings = [
         {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
     ]
+    condarc.content = {
+        "channel_settings": [
+            {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+        ]
+    }
 
     # run command
     result = runner.invoke(auth, ["logout", channel_name, "--json"])
@@ -58,6 +76,33 @@ def test_logout_of_active_session_json(mocker, runner, keyring, condarc):
         "success": True,
         "message": SUCCESSFUL_LOGOUT_MESSAGE,
     }
+
+
+def test_logout_does_not_remove_secret_when_condarc_update_fails(mocker, runner, keyring, condarc):
+    """
+    Fails before removing the keyring secret if the condarc update fails.
+    """
+    channel_name = "tester"
+    username = "user"
+
+    mock_context = mocker.patch("conda_auth.cli.context")
+    keyring_mock, _ = keyring("password")
+    mock_context.channel_settings = [
+        {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+    ]
+    condarc.content = {
+        "channel_settings": [
+            {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+        ]
+    }
+    condarc.__exit__.side_effect = CondaError("Could not save file")
+
+    result = runner.invoke(auth, ["logout", channel_name])
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type == CondaAuthError
+    assert "Could not save file" == exception.message
+    keyring_mock.delete_password.assert_not_called()
 
 
 def test_logout_of_non_existing_session(mocker, runner, keyring):

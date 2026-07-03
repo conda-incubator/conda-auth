@@ -64,18 +64,17 @@ def test_login_with_invalid_auth_type(runner, keyring, condarc):
     assert "error: Missing option 'basic' / 'token'." in result.output
 
 
-def test_login_succeeds_error_returned_when_updating_condarc(runner, keyring, condarc):
+def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring, condarc):
     """
     Test the case where the login runs successfully but an error is returned when trying to update
     the condarc file.
     """
     channel_name = "tester"
 
-    # setup mocks
-    keyring(None)
+    # Make condarc persistence fail before the keyring write can happen.
+    keyring_mock, _ = keyring(None)
     condarc.__exit__.side_effect = CondaError("Could not save file")
 
-    # run command
     result = runner.invoke(
         auth,
         ["login", channel_name, "--basic", "--username", "user", "--password", "password"],
@@ -84,6 +83,28 @@ def test_login_succeeds_error_returned_when_updating_condarc(runner, keyring, co
 
     assert exc_type == CondaAuthError
     assert "Could not save file" == exception.message
+    keyring_mock.set_password.assert_not_called()
+
+
+def test_login_error_when_storing_secret_removes_condarc_settings(runner, keyring, condarc):
+    """
+    Test the case where the condarc update succeeds but storing credentials fails.
+    """
+    channel_name = "tester"
+
+    keyring_mock, _ = keyring(None)
+    # If storing the secret fails, the condarc entry must be rolled back.
+    keyring_mock.set_password.side_effect = CondaAuthError("Could not save secret")
+
+    result = runner.invoke(
+        auth,
+        ["login", channel_name, "--basic", "--username", "user", "--password", "password"],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type == CondaAuthError
+    assert "Could not save secret" == exception.message
+    assert condarc.content == {"channel_settings": []}
 
 
 def test_login_token(mocker, runner, keyring, condarc):
