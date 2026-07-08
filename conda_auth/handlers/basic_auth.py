@@ -1,13 +1,14 @@
 """
 Basic auth implementation for the conda auth handler plugin hook
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
 
-from requests.auth import _basic_auth_str  # type: ignore
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
+from requests.auth import _basic_auth_str
 
 from ..constants import PLUGIN_NAME
 from ..exceptions import CondaAuthError
@@ -46,9 +47,7 @@ class BasicAuthManager(AuthManager):
 
         return username, password
 
-    def remove_secret(
-        self, channel: Channel, settings: Mapping[str, str | None]
-    ) -> None:
+    def remove_secret(self, channel: Channel, settings: Mapping[str, str | None]) -> None:
         keyring_id = self.get_keyring_id(channel)
         username = self.get_username(settings)
 
@@ -125,6 +124,6 @@ class BasicAuthHandler(ChannelAuthBase):
     def __ne__(self, other):
         return not self == other
 
-    def __call__(self, request):
-        request.headers["Authorization"] = _basic_auth_str(self.username, self.password)
-        return request
+    def __call__(self, r):
+        r.headers["Authorization"] = _basic_auth_str(self.username, self.password)
+        return r

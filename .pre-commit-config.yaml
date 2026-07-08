@@ -6,22 +6,17 @@ repos:
       exclude: "(mkdocs.yml|recipe/meta.yaml)"
     - id: end-of-file-fixer
     - id: trailing-whitespace
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.6.1
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
     hooks:
-    - id: mypy
-      additional_dependencies: ['types-requests']
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.0
+    - id: ruff-check
+      args: [--fix]
+    - id: ruff-format
+  - repo: local
     hooks:
-      - id: pyupgrade
-        args: ["--py310-plus"]
-  - repo: https://github.com/akaihola/darker
-    rev: 1.7.2
-    hooks:
-      - id: darker
-        additional_dependencies: [black==22.10.0]
-  - repo: https://github.com/PyCQA/flake8
-    rev: 6.1.0
-    hooks:
-      - id: flake8
+    - id: ty
+      name: ty
+      entry: ty check
+      language: system
+      pass_filenames: false
+      types_or: [python, pyi]

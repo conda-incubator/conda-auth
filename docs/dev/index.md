@@ -28,41 +28,13 @@ the comments or ping the conda-auth maintainers on Element.
 
 ### Prerequisites
 
-Before setting up your development environment, please make sure that conda is installed
-and is at the latest version. Also, make sure to create a fork of the repository in GitHub
-and clone the forked repository to your local computer.
+Before setting up your development environment, make sure pixi is installed.
+If pixi is not already installed on your computer, please visit their
+[installation guide](https://pixi.sh/latest/#installation). Also, make sure to
+create a fork of the repository in GitHub and clone the forked repository to
+your local computer.
 
 ### Creating the development environment
-
-#### Using conda
-
-To set up your development environment, follow these steps:
-
-1. Set up the development environment with these commands:
-   ```
-   conda env create -n conda-auth-dev -f environment.yml
-   ```
-2. Next, you will want to activate the environment:
-   ```
-   conda activate conda-auth-dev
-   ```
-3. Install the `conda-auth` package locally as editable with `pip`:
-   ```
-   pip install -e .
-   ```
-4. Point your shell session to the correct conda executable to use:
-   ```
-   export CONDA_EXE="$CONDA_PREFIX/bin/conda"
-   ```
-5. To verify the installation, run the `conda` command with no arguments and make sure `auth` shows up under
-   the list of available commands.
-
-
-#### Using pixi
-
-You can also use the pixi package manager to set up your development environment.
-If pixi is not already installed on your computer, please visit their
-[installation guide](https://pixi.sh/latest/#installation).
 
 To set up your development environment, follow these steps:
 
@@ -83,22 +55,6 @@ experimenting with it on your computer.
 
 ### Running tests
 
-#### Using conda
-
-To run the test for conda-auth, run the following command:
-
-```
-pytest --doctest-modules
-```
-
-Or, to generate an HTML coverage report, run with the following command:
-
-```
-pytest --cov=conda_auth --cov-report=html --doctest-modules
-```
-
-#### Using pixi
-
 To run the test for conda-auth, run the following command:
 
 ```
@@ -111,9 +67,8 @@ Or, to generate an HTML coverage report, run with the following command:
 pixi run --environment dev testhtml
 ```
 
-If you want to run tests for different Python versions, we have configured this
-project to use all the latest supported versions. You can do so by specifying
-them via the `--environment` option:
+If you want to run tests for different supported Python versions, you can do so
+by specifying them via the `--environment` option:
 
 ```bash
 # For Python 3.10
@@ -121,8 +76,8 @@ pixi run --environment dev-py310 test
 ```
 
 ```bash
-# For Python 3.9
-pixi run --environment dev-py39 test
+# For Python 3.14
+pixi run --environment dev-py314 test
 ```
 
 ## Submitting a pull request

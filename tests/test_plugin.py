@@ -18,6 +18,7 @@ def test_conda_subcommands_hook():
 
     assert objs[0].name == "auth"
     assert objs[0].summary == "Authentication commands for conda"
+    assert objs[0].configure_parser is plugin.configure_parser
 
 
 def test_conda_pre_commands_hook():

@@ -1,7 +1,9 @@
-from conda_auth.cli import auth, SUCCESSFUL_LOGOUT_MESSAGE
+import json
+
+from conda_auth.cli import SUCCESSFUL_LOGOUT_MESSAGE, auth
 from conda_auth.constants import PLUGIN_NAME
-from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME
 from conda_auth.exceptions import CondaAuthError
+from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME
 
 
 def test_logout_of_active_session(mocker, runner, keyring):
@@ -23,12 +25,37 @@ def test_logout_of_active_session(mocker, runner, keyring):
     result = runner.invoke(auth, ["logout", channel_name])
 
     assert SUCCESSFUL_LOGOUT_MESSAGE in result.output
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
 
     # Make sure the delete password call was invoked correctly
     assert keyring_mock.delete_password.mock_calls == [
         mocker.call(f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel_name}", username)
     ]
+
+
+def test_logout_of_active_session_json(mocker, runner, keyring):
+    """
+    Logs out of currently active session with JSON output.
+    """
+    channel_name = "tester"
+    secret = "password"
+    username = "user"
+
+    # setup mocks
+    mock_context = mocker.patch("conda_auth.cli.context")
+    keyring(secret)
+    mock_context.channel_settings = [
+        {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+    ]
+
+    # run command
+    result = runner.invoke(auth, ["logout", channel_name, "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "success": True,
+        "message": SUCCESSFUL_LOGOUT_MESSAGE,
+    }
 
 
 def test_logout_of_non_existing_session(mocker, runner, keyring):

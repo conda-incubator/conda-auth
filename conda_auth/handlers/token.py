@@ -1,9 +1,11 @@
 """
 Token implementation for the conda auth handler plugin hook
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
+from urllib.parse import urlparse
 
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
@@ -53,9 +55,7 @@ class TokenAuthManager(AuthManager):
 
         return USERNAME, token
 
-    def remove_secret(
-        self, channel: Channel, settings: Mapping[str, str | None]
-    ) -> None:
+    def remove_secret(self, channel: Channel, settings: Mapping[str, str | None]) -> None:
         keyring_id = self.get_keyring_id(channel)
 
         storage.delete_password(keyring_id, USERNAME)
@@ -78,9 +78,16 @@ def is_anaconda_dot_org(channel_name: str) -> bool:
     Determines whether the ``channel_name`` is a https://anaconda.org channel
     """
     channel = Channel(channel_name)
-    domain_name = "anaconda.org"
 
-    return any(domain_name in url for url in channel.base_urls)
+    for url in channel.base_urls:
+        if url is None:
+            continue
+
+        host = urlparse(url).hostname
+        if host == "anaconda.org" or (host is not None and host.endswith(".anaconda.org")):
+            return True
+
+    return False
 
 
 class TokenAuthHandler(ChannelAuthBase):
@@ -108,10 +115,10 @@ class TokenAuthHandler(ChannelAuthBase):
 
         super().__init__(channel_name)
 
-    def __call__(self, request):
+    def __call__(self, r):
         if self.is_anaconda_dot_org:
-            request.headers["Authorization"] = f"token {self.token}"
+            r.headers["Authorization"] = f"token {self.token}"
         else:
-            request.headers["Authorization"] = f"Bearer {self.token}"
+            r.headers["Authorization"] = f"Bearer {self.token}"
 
-        return request
+        return r

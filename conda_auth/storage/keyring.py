@@ -3,8 +3,8 @@ from __future__ import annotations
 import keyring
 from keyring.errors import PasswordDeleteError
 
-from .base import Storage
 from ..exceptions import CondaAuthError
+from .base import Storage
 
 
 class KeyringStorage(Storage):
