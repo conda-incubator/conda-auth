@@ -55,10 +55,23 @@ experimenting with it on your computer.
 
 ### Running tests
 
-To run the test for conda-auth, run the following command:
+To run the unit tests for conda-auth, run the following command:
 
 ```
 pixi run --environment dev test
+```
+
+Integration tests run real `conda` subprocesses against local HTTP test servers.
+Run them separately with this command:
+
+```
+pixi run --environment dev test-integration
+```
+
+To run unit and integration tests together, use this command:
+
+```
+pixi run --environment dev test-all
 ```
 
 Or, to generate an HTML coverage report, run with the following command:
