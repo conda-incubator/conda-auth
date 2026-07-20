@@ -78,9 +78,6 @@ jobs:
           pixi-version: v0.70.2
           environments: dev-py312
 
-      - name: Install local package
-        run: pixi run -e dev-py312 develop
-
       - name: Run integration tests
         run: pixi run -e dev-py312 test-integration
 
