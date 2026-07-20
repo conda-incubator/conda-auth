@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,6 +21,9 @@ from conda_auth.handlers.token import (
 @pytest.fixture(autouse=True)
 def clean_up_manager_cache():
     """Makes sure the manager cache gets emptied after each test run"""
+    context = manager._context
+    yield
+    manager._context = context
     manager.cache_clear()
 
 
@@ -117,7 +122,7 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
         manager.remove_secret(channel, settings)
 
 
-def test_token_auth_handler_with_anaconda_dot_org_token(keyring):
+def test_token_auth_handler_with_anaconda_dot_org_token(mocker, keyring):
     """
     Test to make sure that we can successfully instantiate and call the ``TokenAuthHandler``
     using the anaconda.org formatted token
@@ -127,9 +132,10 @@ def test_token_auth_handler_with_anaconda_dot_org_token(keyring):
     channel = Channel(channel_name)
 
     # setup mocks
-    keyring(None)
-
-    manager.store(channel, {"token": token})
+    context = mocker.MagicMock()
+    context.channel_settings = [{"channel": channel.canonical_name, "auth": TOKEN_NAME}]
+    mocker.patch.object(manager, "_context", context)
+    keyring_mock, _ = keyring(token)
 
     auth_handler = TokenAuthHandler(channel_name)
 
@@ -139,9 +145,11 @@ def test_token_auth_handler_with_anaconda_dot_org_token(keyring):
     request = auth_handler(request)
 
     assert request.headers == {"Authorization": f"token {token}"}
+    keyring_mock.get_password.assert_called_once()
+    keyring_mock.set_password.assert_not_called()
 
 
-def test_token_auth_handler_with_bearer_token(keyring):
+def test_token_auth_handler_with_bearer_token(mocker, keyring):
     """
     Test to make sure that we can successfully instantiate and call the ``TokenAuthHandler``
     using a bearer token.
@@ -151,9 +159,10 @@ def test_token_auth_handler_with_bearer_token(keyring):
     channel = Channel(channel_name)
 
     # setup mocks
-    keyring(None)
-
-    manager.store(channel, {"token": token})
+    context = mocker.MagicMock()
+    context.channel_settings = [{"channel": channel.canonical_name, "auth": TOKEN_NAME}]
+    mocker.patch.object(manager, "_context", context)
+    keyring_mock, _ = keyring(token)
 
     auth_handler = TokenAuthHandler(channel_name)
 
@@ -163,6 +172,28 @@ def test_token_auth_handler_with_bearer_token(keyring):
     request = auth_handler(request)
 
     assert request.headers == {"Authorization": f"Bearer {token}"}
+    keyring_mock.get_password.assert_called_once()
+    keyring_mock.set_password.assert_not_called()
+
+
+def test_token_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
+    """
+    Test to make sure request-time auth loading only reads keyring once per channel.
+    """
+    channel_name = "http://localhost"
+    token = "token"
+    channel = Channel(channel_name)
+
+    context = mocker.MagicMock()
+    context.channel_settings = [{"channel": channel.canonical_name, "auth": TOKEN_NAME}]
+    mocker.patch.object(manager, "_context", context)
+    keyring_mock, _ = keyring(token)
+
+    TokenAuthHandler(channel_name)
+    TokenAuthHandler(channel_name)
+
+    keyring_mock.get_password.assert_called_once()
+    keyring_mock.set_password.assert_not_called()
 
 
 def test_token_auth_handler_no_token_available_error():
@@ -195,10 +226,9 @@ def test_token_auth_manager_get_auth_type():
     assert manager.get_auth_type() == TOKEN_NAME
 
 
-def test_token_auth_manager_hook_action(keyring):
+def test_token_auth_manager_get_secret_loads_from_channel_settings(keyring):
     """
-    Test to make sure we can successfully call the ``hook_action`` method for the
-    ``TokenAuthManager``.
+    Test to make sure get_secret loads credentials from matching channel settings.
     """
     channel = "channel"
     token = "token"
@@ -215,6 +245,6 @@ def test_token_auth_manager_hook_action(keyring):
     keyring(token)
 
     token_manager = TokenAuthManager(context)
-    token_manager.hook_action("create")
 
+    assert token_manager.get_secret(channel) == (USERNAME, token)
     assert token_manager._cache == {channel: (USERNAME, token)}
