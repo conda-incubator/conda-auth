@@ -157,6 +157,40 @@ def test_login_token_no_options(mocker, runner, keyring, condarc):
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
+def test_login_error_when_storing_secret_and_rollback_fails(mocker, runner, keyring, condarc):
+    """
+    Test the case where storing credentials fails AND the subsequent attempt to roll back
+    the condarc settings also fails. The rollback error should be silently swallowed and the
+    original exception from save_credentials should still be raised.
+    """
+    channel_name = "tester"
+
+    keyring_mock, _ = keyring(None)
+    original_error = CondaAuthError("Could not save secret")
+    keyring_mock.set_password.side_effect = original_error
+
+    # The rollback config raises an error when exiting the context manager.
+    rollback_config = mocker.MagicMock()
+    rollback_config.__enter__.return_value = rollback_config
+    rollback_config.__exit__.side_effect = CondaError("Could not roll back settings")
+    rollback_config.content = {}
+
+    # First call (update) returns the normal condarc; second call (rollback) raises on exit.
+    mocker.patch(
+        "conda_auth.cli.ConfigurationFile.from_user_condarc",
+        side_effect=[condarc, rollback_config],
+    )
+
+    result = runner.invoke(
+        auth,
+        ["login", channel_name, "--basic", "--username", "user", "--password", "password"],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type == CondaAuthError
+    assert "Could not save secret" == exception.message
+
+
 @pytest.mark.parametrize(
     "option,message",
     (
