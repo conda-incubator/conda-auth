@@ -41,7 +41,6 @@ To set up your development environment, follow these steps:
 1. Set up and activate the development environment with these commands:
    ```
    pixi install
-   pixi run develop
    ```
 2. Next, you will want to start a new shell with the following command:
    ```
