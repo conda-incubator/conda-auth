@@ -3,13 +3,99 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from fnmatch import fnmatch
+from ipaddress import ip_address
+from urllib.parse import urlparse
 
 import conda.base.context
+from conda.auxlib.type_coercion import TypeCoercionError, boolify
 from conda.base.context import context as global_context
 from conda.common.url import urlparse as conda_urlparse
 from conda.models.channel import Channel
 
+from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
+from ..exceptions import CondaAuthError
 from ..storage import storage
+
+
+def is_loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+
+    if host.lower() == "localhost":
+        return True
+
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def get_url_host(url: str) -> str | None:
+    parsed_url = urlparse(url)
+    if parsed_url.hostname is not None:
+        return parsed_url.hostname
+
+    host = parsed_url.netloc.rsplit("@", 1)[-1]
+    host_without_port, _, port = host.rpartition(":")
+    if host.startswith("::1:") and port.isdigit():
+        return host_without_port
+
+    try:
+        ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return host
+
+    if host.count(":") > 1:
+        if port.isdigit():
+            return host_without_port
+
+    if ":" in host:
+        host, _, _ = host.partition(":")
+
+    return host or None
+
+
+def allows_plaintext_http(settings: Mapping[str, object] | None) -> bool:
+    if settings is None:
+        return False
+
+    try:
+        return boolify(settings.get(AUTH_ALLOW_PLAINTEXT_HTTP_PARAM))
+    except TypeCoercionError:
+        return False
+
+
+def validate_secure_channel(
+    channel: Channel,
+    *,
+    allow_plaintext_http: bool = False,
+) -> None:
+    """
+    Prevent credentials from being sent over unsupported transports.
+    """
+    for url in channel.base_urls:
+        if url is None:
+            continue
+
+        parsed_url = urlparse(url)
+        if parsed_url.scheme == "https":
+            continue
+
+        if parsed_url.scheme == "http":
+            if allow_plaintext_http or is_loopback_host(get_url_host(url)):
+                continue
+
+            raise CondaAuthError(
+                "Refusing to use credentials over insecure HTTP channel "
+                f"{url!r}. Use HTTPS or localhost."
+            )
+
+        raise CondaAuthError(
+            "Refusing to use credentials with unsupported channel scheme "
+            f"{parsed_url.scheme!r} for {url!r}. Use HTTPS or localhost."
+        )
 
 
 class AuthManager(ABC):
@@ -28,36 +114,63 @@ class AuthManager(ABC):
         self._context = context or global_context
         self._cache = {} if cache is None else cache
 
-    def store(self, channel: Channel, settings: Mapping[str, str | None]) -> str:
+    def store(self, channel: Channel, settings: Mapping[str, object]) -> str:
         """
         Used to retrieve credentials and store them in the credential store.
 
         This method returns a "username" because this property could have been retrieved
         via user input while calling ``fetch_secret``.
         """
+        validate_secure_channel(
+            channel,
+            allow_plaintext_http=allows_plaintext_http(settings),
+        )
         extra_params = {param: settings.get(param) for param in self.get_config_parameters()}
+        if allows_plaintext_http(settings):
+            extra_params[AUTH_ALLOW_PLAINTEXT_HTTP_PARAM] = True
         username, secret = self.fetch_secret(channel, extra_params, use_cache=False)
 
-        self.save_credentials(channel, username, secret)
+        self.save_credentials(
+            channel,
+            username,
+            secret,
+            allow_plaintext_http=allows_plaintext_http(settings),
+        )
 
         return username
 
-    def save_credentials(self, channel: Channel, username: str, secret: str) -> None:
+    def save_credentials(
+        self,
+        channel: Channel,
+        username: str,
+        secret: str,
+        *,
+        allow_plaintext_http: bool = False,
+    ) -> None:
         """
         Saves the provided credentials to our credential store.
         """
+        validate_secure_channel(
+            channel,
+            allow_plaintext_http=allow_plaintext_http,
+        )
         storage.set_password(self.get_keyring_id(channel), username, secret)
 
     def fetch_secret(
         self,
         channel: Channel,
-        settings: Mapping[str, str | None],
+        settings: Mapping[str, object],
         *,
         use_cache: bool = True,
     ) -> tuple[str, str]:
         """
         Fetch secrets and handle updating cache.
         """
+        validate_secure_channel(
+            channel,
+            allow_plaintext_http=allows_plaintext_http(settings),
+        )
+
         if use_cache and (secrets := self._cache.get(channel.canonical_name)):
             return secrets
 
@@ -72,17 +185,21 @@ class AuthManager(ABC):
         """
         channel = Channel(channel_name)
         secrets = self._cache.get(channel.canonical_name)
+        settings = self.get_channel_settings(channel)
 
+        validate_secure_channel(
+            channel,
+            allow_plaintext_http=allows_plaintext_http(settings),
+        )
         if secrets is not None:
             return secrets
 
-        settings = self.get_channel_settings(channel)
         if settings is None:
             return None, None
 
         return self.fetch_secret(channel, settings)
 
-    def get_channel_settings(self, channel: Channel) -> Mapping[str, str | None] | None:
+    def get_channel_settings(self, channel: Channel) -> Mapping[str, object] | None:
         """
         Find the auth settings that apply to a channel.
         """
@@ -124,13 +241,11 @@ class AuthManager(ABC):
             self._cache.clear()
 
     @abstractmethod
-    def _fetch_secret(
-        self, channel: Channel, settings: Mapping[str, str | None]
-    ) -> tuple[str, str]:
+    def _fetch_secret(self, channel: Channel, settings: Mapping[str, object]) -> tuple[str, str]:
         """Implementations should include routine for fetching secret"""
 
     @abstractmethod
-    def remove_secret(self, channel: Channel, settings: Mapping[str, str]) -> None:
+    def remove_secret(self, channel: Channel, settings: Mapping[str, object]) -> None:
         """Implementations should include routine for removing secret"""
 
     @abstractmethod

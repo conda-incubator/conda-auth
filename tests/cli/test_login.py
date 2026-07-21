@@ -80,6 +80,95 @@ def test_login_validation_errors_raise_conda_error(runner, keyring, condarc, arg
     assert condarc.content == {}
 
 
+@pytest.mark.parametrize(
+    "args",
+    (
+        ["login", "http://example.com/private-channel", "--basic"],
+        ["login", "http://example.com/private-channel", "--token"],
+    ),
+    ids=("basic", "token"),
+)
+def test_login_rejects_plaintext_http_before_reading_secrets(
+    monkeypatch, runner, keyring, condarc, args
+):
+    """
+    Refuses to collect or store credentials for remote plaintext HTTP channels.
+    """
+
+    def fail_prompt(prompt):
+        raise AssertionError(f"Prompted for {prompt!r}")
+
+    # Transport validation happens before interactive secret prompts.
+    keyring_mock, _ = keyring(None)
+    monkeypatch.setattr("conda_auth.cli.prompt_text", fail_prompt)
+    monkeypatch.setattr("conda_auth.cli.prompt_secret", fail_prompt)
+
+    result = runner.invoke(auth, args)
+    exc_type, exception, _ = result.exc_info
+
+    assert result.exit_code == 1, result.output
+    assert exc_type == CondaAuthError
+    assert "insecure HTTP channel" in exception.message
+    keyring_mock.get_password.assert_not_called()
+    keyring_mock.set_password.assert_not_called()
+    assert condarc.content == {}
+
+
+@pytest.mark.parametrize(
+    ("args", "expected_settings", "expected_keyring_call"),
+    (
+        (
+            [
+                "login",
+                "http://example.com/private-channel",
+                "--basic",
+                "--username",
+                "user",
+                "--password",
+                "password",
+                "--allow-plaintext-http",
+            ],
+            {
+                "channel": "http://example.com/private-channel",
+                "auth": "http-basic",
+                "username": "user",
+                "auth_allow_plaintext_http": True,
+            },
+            ("conda-auth::http-basic::http://example.com/private-channel", "user", "password"),
+        ),
+        (
+            [
+                "login",
+                "http://example.com/private-channel",
+                "--token",
+                "token",
+                "--allow-plaintext-http",
+            ],
+            {
+                "channel": "http://example.com/private-channel",
+                "auth": "token",
+                "auth_allow_plaintext_http": True,
+            },
+            ("conda-auth::token::http://example.com/private-channel", "token", "token"),
+        ),
+    ),
+    ids=("basic", "token"),
+)
+def test_login_allows_plaintext_http_when_explicit(
+    runner, keyring, condarc, args, expected_settings, expected_keyring_call
+):
+    """
+    Persists explicit plaintext HTTP opt-in with the channel auth settings.
+    """
+    keyring_mock, _ = keyring(None)
+
+    result = runner.invoke(auth, args)
+
+    assert result.exit_code == 0, result.output
+    assert condarc.content == {"channel_settings": [expected_settings]}
+    keyring_mock.set_password.assert_called_once_with(*expected_keyring_call)
+
+
 def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring, condarc):
     """
     Test the case where the login runs successfully but an error is returned when trying to update

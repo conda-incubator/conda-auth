@@ -6,11 +6,13 @@ import pytest
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 from keyring.errors import PasswordDeleteError
-from requests.auth import _basic_auth_str
+from requests.auth import HTTPBasicAuth
 
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.basic_auth import (
     HTTP_BASIC_AUTH_NAME,
+    PASSWORD_PARAM_NAME,
+    USERNAME_PARAM_NAME,
     BasicAuthHandler,
     BasicAuthManager,
     manager,
@@ -59,6 +61,24 @@ def test_basic_auth_manager_no_secret_or_username(keyring):
     # run code under test
     with pytest.raises(CondaAuthError, match="Username not found"):
         manager.store(channel, settings)
+
+
+@pytest.mark.parametrize(
+    ("settings", "message"),
+    (
+        ({USERNAME_PARAM_NAME: 1}, "Username not found"),
+        (
+            {USERNAME_PARAM_NAME: "admin", PASSWORD_PARAM_NAME: 1},
+            "Password not found",
+        ),
+    ),
+    ids=("username", "password"),
+)
+def test_basic_auth_manager_rejects_non_string_credentials(keyring, settings, message):
+    keyring(None)
+
+    with pytest.raises(CondaAuthError, match=message):
+        manager.store(Channel("tester"), settings)
 
 
 def test_basic_auth_manager_with_previous_secret(keyring):
@@ -185,8 +205,12 @@ def test_basic_auth_handler(mocker, keyring):
 
     request = auth_handler(request)
 
-    assert request.headers == {"Authorization": _basic_auth_str(username, password)}
-    keyring_mock.get_password.assert_called_once()
+    expected_request = MagicMock()
+    expected_request.headers = {}
+    HTTPBasicAuth(username, password)(expected_request)
+
+    assert request.headers == expected_request.headers
+    keyring_mock.get_password.assert_called_once_with("conda-auth::http-basic::channel", username)
     keyring_mock.set_password.assert_not_called()
 
 
@@ -245,6 +269,71 @@ def test_basic_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
     BasicAuthHandler(channel_name)
 
     keyring_mock.get_password.assert_called_once()
+    keyring_mock.set_password.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("channel_name", "message"),
+    (
+        ("http://example.com/private-channel", "insecure HTTP channel"),
+        ("ftp://example.com/private-channel", "unsupported channel scheme"),
+        ("s3://bucket/private-channel", "unsupported channel scheme"),
+        ("file:///tmp/private-channel", "unsupported channel scheme"),
+    ),
+    ids=("remote-http", "ftp", "s3", "file"),
+)
+def test_basic_auth_handler_rejects_unsupported_transports_before_keyring(
+    monkeypatch, keyring, context_factory, channel_name, message
+):
+    """Unsupported transports never receive basic auth credentials."""
+    username = "username"
+
+    # Transport validation happens before reading the configured keyring secret.
+    context = context_factory(
+        [{"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring("password")
+
+    with pytest.raises(CondaAuthError, match=message):
+        BasicAuthHandler(channel_name)
+
+    keyring_mock.get_password.assert_not_called()
+    keyring_mock.set_password.assert_not_called()
+
+
+def test_basic_auth_handler_allows_plaintext_http_when_configured(
+    monkeypatch, keyring, context_factory, request_factory
+):
+    """Explicitly configured plaintext HTTP channels can receive basic auth."""
+    channel_name = "http://example.com/private-channel"
+    username = "username"
+    password = "password"
+
+    # The opt-in is read from channel_settings at request-auth time.
+    context = context_factory(
+        [
+            {
+                "channel": channel_name,
+                "auth": HTTP_BASIC_AUTH_NAME,
+                "username": username,
+                "auth_allow_plaintext_http": "True",
+            }
+        ]
+    )
+    monkeypatch.setattr(manager, "_context", context)
+    keyring_mock, _ = keyring(password)
+
+    auth_handler = BasicAuthHandler(channel_name)
+    request = auth_handler(request_factory())
+
+    expected_request = request_factory()
+    HTTPBasicAuth(username, password)(expected_request)
+
+    assert request.headers == expected_request.headers
+    keyring_mock.get_password.assert_called_once_with(
+        "conda-auth::http-basic::http://example.com/private-channel", username
+    )
     keyring_mock.set_password.assert_not_called()
 
 
