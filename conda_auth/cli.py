@@ -161,13 +161,15 @@ def login(channel: Channel, **kwargs):
 
     try:
         auth_manager.save_credentials(channel, username, secret)
-    except Exception:
+    except Exception as credential_error:
         auth_manager.cache_clear(channel.canonical_name)
         try:
             with ConfigurationFile.from_user_condarc() as config:
                 remove_channel_settings(config, channel.canonical_name)
-        except (CondaError, OSError, yaml.YAMLError):
-            pass
+        except (CondaError, OSError, yaml.YAMLError) as rollback_error:
+            raise CondaAuthError(
+                f"{credential_error}. Failed to roll back channel settings: {rollback_error}"
+            ) from credential_error
         raise
 
 

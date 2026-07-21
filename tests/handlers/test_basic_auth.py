@@ -15,6 +15,7 @@ from conda_auth.handlers.basic_auth import (
     BasicAuthManager,
     manager,
 )
+from conda_auth.handlers.token import TOKEN_NAME
 
 
 @pytest.fixture(autouse=True)
@@ -72,13 +73,15 @@ def test_basic_auth_manager_with_previous_secret(keyring):
     channel = Channel("tester")
 
     # setup mocks
-    keyring(secret)
+    keyring_mock, _ = keyring(secret)
 
     # run code under test
     manager.store(channel, settings)
+    assert manager.fetch_secret(channel, settings) == ("admin", secret)
 
     # make assertions
     assert manager._cache == {channel.canonical_name: ("admin", secret)}
+    keyring_mock.get_password.assert_called_once()
 
 
 def test_basic_auth_manager_get_secret_cache_exists(keyring):
@@ -301,7 +304,8 @@ def test_basic_auth_manager_get_secret_loads_from_channel_settings(keyring):
     context = MagicMock()
     context.channels = (channel,)
     context.channel_settings = [
-        {"channel": channel, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+        {"channel": channel, "auth": TOKEN_NAME},
+        {"channel": channel, "auth": HTTP_BASIC_AUTH_NAME, "username": username},
     ]
     keyring(password)
 
