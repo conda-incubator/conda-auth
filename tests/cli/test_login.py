@@ -140,6 +140,27 @@ def test_login_error_when_storing_secret_reports_rollback(
         assert exception.__cause__ is keyring_mock.set_password.side_effect
 
 
+def test_login_error_when_storing_secret_preserves_non_auth_settings(runner, keyring, condarc):
+    channel_name = "tester"
+
+    # Rolling back auth settings must not remove other channel-scoped conda settings.
+    keyring_mock, _ = keyring(None)
+    keyring_mock.set_password.side_effect = CondaAuthError("Could not save secret")
+    condarc.content = {"channel_settings": [{"channel": channel_name, "ssl_verify": False}]}
+
+    result = runner.invoke(
+        auth,
+        ["login", channel_name, "--basic", "--username", "user", "--password", "password"],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type == CondaAuthError
+    assert "Could not save secret" == exception.message
+    assert condarc.content == {
+        "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
+    }
+
+
 def test_login_token(mocker, runner, keyring, condarc):
     """
     Test successful login with token

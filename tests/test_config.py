@@ -16,9 +16,9 @@ channel_settings:
 """
 
 
-def test_get_updated_channel_settings_replaces_existing_channel():
+def test_get_updated_channel_settings_preserves_existing_channel_settings():
     channel_settings = [
-        {"channel": "tester", "auth": "token"},
+        {"channel": "tester", "auth": "token", "ssl_verify": False},
         {"channel": "other", "auth": "token"},
     ]
 
@@ -28,8 +28,30 @@ def test_get_updated_channel_settings_replaces_existing_channel():
         "http-basic",
         "username",
     ) == [
+        {
+            "channel": "tester",
+            "ssl_verify": False,
+            "auth": "http-basic",
+            "username": "username",
+        },
         {"channel": "other", "auth": "token"},
-        {"channel": "tester", "auth": "http-basic", "username": "username"},
+    ]
+
+
+def test_get_updated_channel_settings_updates_last_exact_channel():
+    channel_settings = [
+        {"channel": "tester", "auth": "token", "description": "older"},
+        {"channel": "tester", "ssl_verify": False},
+    ]
+
+    assert get_updated_channel_settings(channel_settings, "tester", "http-basic", "username") == [
+        {"channel": "tester", "auth": "token", "description": "older"},
+        {
+            "channel": "tester",
+            "ssl_verify": False,
+            "auth": "http-basic",
+            "username": "username",
+        },
     ]
 
 
@@ -92,7 +114,7 @@ def test_remove_channel_settings():
         }
     )
 
-    remove_channel_settings(config, "tester")
+    assert remove_channel_settings(config, "tester") is True
 
     assert config.content == {
         "channel_settings": [
@@ -101,8 +123,51 @@ def test_remove_channel_settings():
     }
 
 
-def test_remove_channel_settings_requires_list():
+def test_remove_channel_settings_preserves_non_auth_settings():
+    config = ConfigurationFile(
+        content={
+            "channel_settings": [
+                {
+                    "channel": "tester",
+                    "auth": "token",
+                    "ssl_verify": False,
+                },
+                {"channel": "other", "auth": "token"},
+            ]
+        }
+    )
+
+    assert remove_channel_settings(config, "tester") is True
+
+    assert config.content == {
+        "channel_settings": [
+            {"channel": "tester", "ssl_verify": False},
+            {"channel": "other", "auth": "token"},
+        ]
+    }
+
+
+def test_remove_channel_settings_reports_when_no_auth_settings_removed():
+    config = ConfigurationFile(
+        content={"channel_settings": [{"channel": "tester", "ssl_verify": False}]}
+    )
+
+    assert remove_channel_settings(config, "tester") is False
+
+    assert config.content == {"channel_settings": [{"channel": "tester", "ssl_verify": False}]}
+
+
+@pytest.mark.parametrize(
+    ("settings_func", "args"),
+    (
+        (update_channel_settings, ("tester", "token")),
+        (remove_channel_settings, ("tester",)),
+    ),
+    ids=("update", "remove"),
+)
+def test_channel_settings_helpers_require_list(settings_func, args):
+    # Both helpers reject malformed channel_settings before mutating content.
     config = ConfigurationFile(content={"channel_settings": "tester"})
 
     with pytest.raises(CondaAuthError, match="Expected 'channel_settings' to be a list"):
-        remove_channel_settings(config, "tester")
+        settings_func(config, *args)
