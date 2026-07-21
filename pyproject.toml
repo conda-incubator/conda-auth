@@ -44,13 +44,12 @@ channels = ["conda-forge"]
 platforms = ["linux-64", "win-64", "osx-64", "osx-arm64"]
 
 [tool.pixi.tasks]
-# Run this first; it will install conda-auth as a local package
-develop = "pip install -e ."
-
 # Test commands
-test = "pytest --doctest-modules"
-testcov = "pytest --cov=conda_auth --cov-report=xml --doctest-modules"
-testhtml = "pytest --cov=conda_auth --cov-report=html --doctest-modules"
+test = "pytest --doctest-modules -m 'not integration'"
+test-integration = "pytest --doctest-modules -m integration"
+test-all = "pytest --doctest-modules"
+testcov = "pytest --cov=conda_auth --cov-report=xml --doctest-modules -m 'not integration'"
+testhtml = "pytest --cov=conda_auth --cov-report=html --doctest-modules -m 'not integration'"
 
 # Build commands
 build = "rattler-build build --recipe recipe.yaml"
@@ -60,6 +59,9 @@ python = ">=3.10"
 conda = ">=26.1"
 keyring = "*"
 requests = "*"
+
+[tool.pixi.pypi-dependencies]
+conda_auth = { path = ".", editable = true }
 
 [tool.pixi.feature.py314.dependencies]
 python = "3.14.*"
@@ -131,3 +133,8 @@ allowed-unresolved-imports = ["conda_auth._version"]
 
 [tool.ty.src]
 include = ["conda_auth", "tests"]
+
+[tool.pytest.ini_options]
+markers = [
+  "integration: tests that run real conda subprocesses against a local HTTP server",
+]

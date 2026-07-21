@@ -62,9 +62,28 @@ jobs:
           fail_ci_if_error: ${{ github.event_name != 'pull_request' }}
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  integration-tests:
+    name: Integration tests
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.draft == false
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11 # v0.9.6
+        with:
+          pixi-version: v0.70.2
+          environments: dev-py312
+
+      - name: Run integration tests
+        run: pixi run -e dev-py312 test-integration
+
   build:
     name: Canary Build
-    needs: [tests]
+    needs: [tests, integration-tests]
     # only build canary build if
     # - prior steps succeeded,
     # - this is the main branch

@@ -41,7 +41,6 @@ To set up your development environment, follow these steps:
 1. Set up and activate the development environment with these commands:
    ```
    pixi install
-   pixi run develop
    ```
 2. Next, you will want to start a new shell with the following command:
    ```
@@ -55,10 +54,23 @@ experimenting with it on your computer.
 
 ### Running tests
 
-To run the test for conda-auth, run the following command:
+To run the unit tests for conda-auth, run the following command:
 
 ```
 pixi run --environment dev test
+```
+
+Integration tests run real `conda` subprocesses against local HTTP test servers.
+Run them separately with this command:
+
+```
+pixi run --environment dev test-integration
+```
+
+To run unit and integration tests together, use this command:
+
+```
+pixi run --environment dev test-all
 ```
 
 Or, to generate an HTML coverage report, run with the following command:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,11 +15,15 @@ from conda_auth.handlers.basic_auth import (
     BasicAuthManager,
     manager,
 )
+from conda_auth.handlers.token import TOKEN_NAME
 
 
 @pytest.fixture(autouse=True)
 def clean_up_manager_cache():
     """Makes sure the manager cache gets emptied after each test run"""
+    context = manager._context
+    yield
+    manager._context = context
     manager.cache_clear()
 
 
@@ -67,25 +73,24 @@ def test_basic_auth_manager_with_previous_secret(keyring):
     channel = Channel("tester")
 
     # setup mocks
-    keyring(secret)
+    keyring_mock, _ = keyring(secret)
 
     # run code under test
     manager.store(channel, settings)
+    assert manager.fetch_secret(channel, settings) == ("admin", secret)
 
     # make assertions
     assert manager._cache == {channel.canonical_name: ("admin", secret)}
+    keyring_mock.get_password.assert_called_once()
 
 
-def test_basic_auth_manager_cache_exists(keyring):
+def test_basic_auth_manager_get_secret_cache_exists(keyring):
     """
     Test to make sure that everything works as expected when a cache entry
     already exists for a credential set.
     """
     secret = "secret"
     username = "admin"
-    settings = {
-        "username": username,
-    }
     channel = Channel("tester")
     manager._cache = {channel.canonical_name: (username, secret)}
 
@@ -93,7 +98,7 @@ def test_basic_auth_manager_cache_exists(keyring):
     keyring_mock, _ = keyring(secret)
 
     # run code under test
-    manager.store(channel, settings)
+    assert manager.get_secret(channel.canonical_name) == (username, secret)
 
     # make assertions
     assert manager._cache == {channel.canonical_name: (username, secret)}
@@ -157,19 +162,21 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
         manager.remove_secret(channel, settings)
 
 
-def test_basic_auth_handler(keyring):
+def test_basic_auth_handler(mocker, keyring):
     """
     Test to make sure that we can successfully instantiate and call the ``BasicAuthHandler``
     """
     channel_name = "channel"
     password = "password"
     username = "username"
-    channel = Channel(channel_name)
 
     # setup mocks
-    keyring(None)
-
-    manager.store(channel, {"username": username, "password": password})
+    context = mocker.MagicMock()
+    context.channel_settings = [
+        {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+    ]
+    mocker.patch.object(manager, "_context", context)
+    keyring_mock, _ = keyring(password)
 
     auth_handler = BasicAuthHandler(channel_name)
 
@@ -179,9 +186,11 @@ def test_basic_auth_handler(keyring):
     request = auth_handler(request)
 
     assert request.headers == {"Authorization": _basic_auth_str(username, password)}
+    keyring_mock.get_password.assert_called_once()
+    keyring_mock.set_password.assert_not_called()
 
 
-def test_basic_auth_handler_equals_methods(keyring):
+def test_basic_auth_handler_equals_methods(mocker, keyring):
     """
     Test to make sure that we can instantiate multiple ``BasicAuthHandler`` objects and then
     compare the two objects
@@ -194,16 +203,63 @@ def test_basic_auth_handler_equals_methods(keyring):
     channel_two = Channel(channel_name_two)
 
     # setup mocks
-    keyring(None)
-
-    manager.store(channel_one, {"username": username, "password": password})
-    manager.store(channel_two, {"username": username, "password": password})
+    context = mocker.MagicMock()
+    context.channel_settings = [
+        {
+            "channel": channel_one.canonical_name,
+            "auth": HTTP_BASIC_AUTH_NAME,
+            "username": username,
+        },
+        {
+            "channel": channel_two.canonical_name,
+            "auth": HTTP_BASIC_AUTH_NAME,
+            "username": username,
+        },
+    ]
+    mocker.patch.object(manager, "_context", context)
+    keyring(password)
 
     auth_handler_one = BasicAuthHandler(channel_name_one)
     auth_handler_two = BasicAuthHandler(channel_name_two)
 
     assert (auth_handler_one == auth_handler_two) is True
     assert (auth_handler_one != auth_handler_two) is False
+
+
+def test_basic_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
+    """
+    Test to make sure request-time auth loading only reads keyring once per channel.
+    """
+    channel_name = "channel"
+    username = "username"
+    password = "password"
+
+    context = mocker.MagicMock()
+    context.channel_settings = [
+        {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+    ]
+    mocker.patch.object(manager, "_context", context)
+    keyring_mock, _ = keyring(password)
+
+    BasicAuthHandler(channel_name)
+    BasicAuthHandler(channel_name)
+
+    keyring_mock.get_password.assert_called_once()
+    keyring_mock.set_password.assert_not_called()
+
+
+def test_basic_auth_handler_partial_cache_error():
+    """
+    Test to make sure partial cached credentials are rejected.
+    """
+    channel_name = "channel"
+    manager._cache = {channel_name: ("username", None)}
+
+    with pytest.raises(
+        CondaError,
+        match=f"Unable to find user credentials for requests with channel {channel_name}",
+    ):
+        BasicAuthHandler(channel_name)
 
 
 def test_basic_auth_handler_no_credentials_available_error():
@@ -236,10 +292,9 @@ def test_token_auth_manager_get_auth_type():
     assert manager.get_auth_type() == HTTP_BASIC_AUTH_NAME
 
 
-def test_basic_auth_manager_hook_action(keyring):
+def test_basic_auth_manager_get_secret_loads_from_channel_settings(keyring):
     """
-    Test to make sure we can successfully call the ``hook_action`` method for the
-    ``BasicAuthManager``.
+    Test to make sure get_secret loads credentials from matching channel settings.
     """
     channel = "channel"
     username = "username"
@@ -249,11 +304,12 @@ def test_basic_auth_manager_hook_action(keyring):
     context = MagicMock()
     context.channels = (channel,)
     context.channel_settings = [
-        {"channel": channel, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
+        {"channel": channel, "auth": TOKEN_NAME},
+        {"channel": channel, "auth": HTTP_BASIC_AUTH_NAME, "username": username},
     ]
     keyring(password)
 
-    token_manager = BasicAuthManager(context)
-    token_manager.hook_action("create")
+    auth_manager = BasicAuthManager(context)
 
-    assert token_manager._cache == {channel: (username, password)}
+    assert auth_manager.get_secret(channel) == (username, password)
+    assert auth_manager._cache == {channel: (username, password)}
