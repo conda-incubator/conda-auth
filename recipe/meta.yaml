@@ -1,6 +1,6 @@
 package:
   name: conda-auth
-  version: {{ GIT_DESCRIBE_TAG }}.{{ GIT_BUILD_STR }}
+  version: {{ GIT_DESCRIBE_TAG_PEP440 }}
 
 source:
   git_url: ../
