@@ -46,22 +46,38 @@ def test_login_with_options_basic_auth(runner, keyring, condarc):
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
 
 
-def test_login_with_invalid_auth_type(runner, keyring, condarc):
+@pytest.mark.parametrize(
+    ("args", "message"),
+    (
+        (["login", "tester"], "Missing option 'basic' / 'token'."),
+        (["login", "tester", "--json"], "Missing option 'basic' / 'token'."),
+        (
+            ["login", "tester", "--token", "token", "--username", "user", "--json"],
+            "Option 'username' cannot be used with 'token'",
+        ),
+        (
+            ["login", "tester", "--token", "token", "--password", "password", "--json"],
+            "Option 'password' cannot be used with 'token'",
+        ),
+    ),
+    ids=("missing-auth", "missing-auth-json", "token-username-json", "token-password-json"),
+)
+def test_login_validation_errors_raise_conda_error(runner, keyring, condarc, args, message):
     """
-    Runs the login command when there is an invalid auth type configured in settings
+    Runs the login command with invalid parsed options.
     """
-    channel_name = "tester"
+    # Parsed semantic validation should let conda format errors, including JSON.
+    keyring_mock, _ = keyring(None)
 
-    # setup mocks
-    keyring(None)
-
-    # run command
-    result = runner.invoke(auth, ["login", channel_name])
+    result = runner.invoke(auth, args)
     exc_type, exception, _ = result.exc_info
 
-    assert result.exit_code == 2, result.output
-    assert exc_type is SystemExit
-    assert "error: Missing option 'basic' / 'token'." in result.output
+    assert result.exit_code == 1, result.output
+    assert exc_type == CondaAuthError
+    assert exception.message == message
+    assert result.output == ""
+    keyring_mock.set_password.assert_not_called()
+    assert condarc.content == {}
 
 
 def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring, condarc):
@@ -196,7 +212,7 @@ def test_login_token_rejects_basic_auth_options(runner, keyring, condarc, option
     )
     exc_type, exception, _ = result.exc_info
 
-    assert result.exit_code == 2, result.output
-    assert exc_type is SystemExit
-    assert exception.code == 2
-    assert f"error: {message}" in result.output
+    assert result.exit_code == 1, result.output
+    assert exc_type is CondaAuthError
+    assert exception.message == message
+    assert result.output == ""
