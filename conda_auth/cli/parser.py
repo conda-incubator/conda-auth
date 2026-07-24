@@ -4,6 +4,7 @@ import argparse
 
 from conda.cli.helpers import add_parser_json
 
+from ..handlers.token import TOKEN_HEADER_PARAM_NAME, TOKEN_TEMPLATE_PARAM_NAME
 from ..oauth2_client import OAUTH_SCOPE_PARAM_NAME
 
 PROMPT_VALUE = object()
@@ -19,14 +20,6 @@ def add_basic_options(parser: argparse.ArgumentParser) -> None:
         "-p",
         "--password",
         help="Password to use for private channels using HTTP basic authentication",
-    )
-
-
-def add_plaintext_option(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--allow-plaintext-http",
-        action="store_true",
-        help="Allow credentials to be used over plaintext HTTP for this channel",
     )
 
 
@@ -55,6 +48,31 @@ def add_oauth_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--oauth-redirect-uri", help="OAuth redirect URI")
     parser.add_argument("--user-agent", help="User-Agent header for OAuth requests")
+
+
+def add_token_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--header",
+        "--token-header",
+        dest=TOKEN_HEADER_PARAM_NAME,
+        metavar="HEADER",
+        help="HTTP header name to use for token authentication",
+    )
+    parser.add_argument(
+        "--token-template",
+        "--header-template",
+        dest=TOKEN_TEMPLATE_PARAM_NAME,
+        metavar="TEMPLATE",
+        help="Header value template; must include '{token}'",
+    )
+
+
+def add_plaintext_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--allow-plaintext-http",
+        action="store_true",
+        help="Allow credentials to be used over plaintext HTTP for this channel",
+    )
 
 
 def configure_parser(parser: argparse.ArgumentParser) -> None:
@@ -91,6 +109,7 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
         help="Use OAuth 2.0/OIDC authentication",
     )
     add_basic_options(login_parser)
+    add_token_options(login_parser)
     add_oauth_options(login_parser)
     add_plaintext_option(login_parser)
     add_parser_json(login_parser)
