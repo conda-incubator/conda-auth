@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 import pytest
-from keyring.errors import NoKeyringError, PasswordDeleteError
+from keyring.errors import KeyringError, NoKeyringError, PasswordDeleteError
 
 from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
@@ -118,27 +118,89 @@ def test_keyring_storage_ignores_structured_delete_error(keyring):
 
 
 def test_keyring_storage_reads_legacy_password(keyring):
-    """
-    Old password-shaped entries can be read for one-time migration.
-    """
+    """Old password-shaped entries can be read by keyring service and username."""
     keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[("conda-auth::token::tester", "token")] = "legacy-token"
     backend = KeyringStorage()
-    keyring_mock.secrets[("conda-auth::token::tester", "token")] = "secret"
 
-    assert backend.get_legacy_password("token", "tester", "token") == "secret"
+    assert backend.get_legacy_password("token", "tester", "token") == "legacy-token"
 
 
 def test_keyring_storage_deletes_legacy_password_when_present(keyring):
-    """
-    Legacy cleanup is best-effort and scoped to the old service name.
-    """
+    """Old password-shaped entries are removed only when they exist."""
     keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[("conda-auth::token::tester", "token")] = "legacy-token"
     backend = KeyringStorage()
-    keyring_mock.secrets[("conda-auth::token::tester", "token")] = "secret"
 
     backend.delete_legacy_password("token", "tester", "token")
 
     assert ("conda-auth::token::tester", "token") not in keyring_mock.secrets
+    assert keyring_mock.get_password_calls == [("conda-auth::token::tester", "token")]
+    assert keyring_mock.delete_password_calls == [("conda-auth::token::tester", "token")]
+
+
+def test_keyring_storage_skips_missing_legacy_password_deletion(keyring):
+    """Missing old password-shaped entries do not produce delete warnings."""
+    keyring_mock, _ = keyring(None)
+    backend = KeyringStorage()
+
+    backend.delete_legacy_password("token", "tester", "token")
+
+    assert keyring_mock.get_password_calls == [("conda-auth::token::tester", "token")]
+    assert keyring_mock.delete_password_calls == []
+
+
+@pytest.mark.parametrize(
+    ("operation", "warning_match", "expected_call"),
+    (
+        (
+            "structured",
+            "Unable to delete credential for 'tester'",
+            ("conda-auth::credential::tester", "credential"),
+        ),
+        (
+            "legacy",
+            "Unable to delete legacy credential for 'tester'",
+            ("conda-auth::token::tester", "token"),
+        ),
+    ),
+    ids=("structured", "legacy"),
+)
+def test_keyring_storage_warns_when_delete_is_denied(
+    keyring, operation, warning_match, expected_call
+):
+    """Delete is best-effort and visible when the OS keychain refuses item removal."""
+    keyring_mock, _ = keyring(None)
+    if operation == "legacy":
+        keyring_mock.secrets[("conda-auth::token::tester", "token")] = "legacy-token"
+    keyring_mock.delete_password_side_effect = PasswordDeleteError(
+        "Can't delete password in keychain: (-25244, 'Unknown Error')"
+    )
+    backend = KeyringStorage()
+
+    with pytest.warns(RuntimeWarning, match=warning_match):
+        if operation == "structured":
+            backend.delete_credential("tester")
+        else:
+            backend.delete_legacy_password("token", "tester", "token")
+
+    assert keyring_mock.delete_password_calls == [expected_call]
+
+
+@pytest.mark.parametrize(
+    "message",
+    ("Secret not found.", "Item does not exist.", "No such credential.", "(-25300, missing)"),
+    ids=("not-found", "does-not-exist", "no-such", "macos-missing"),
+)
+def test_keyring_storage_ignores_missing_delete_errors(keyring, message):
+    """Deleting an already-missing keyring item is a no-op."""
+    keyring_mock, _ = keyring(None)
+    keyring_mock.delete_password_side_effect = PasswordDeleteError(message)
+    backend = KeyringStorage()
+
+    backend.delete_credential("tester")
+
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 def test_keyring_storage_ignores_legacy_delete_error(keyring):
@@ -167,3 +229,71 @@ def test_keyring_storage_delete_preserves_other_records(keyring):
         auth_type="token",
         token="two",
     )
+
+
+def test_keyring_storage_wraps_get_errors(keyring):
+    keyring_mock, _ = keyring(None)
+    keyring_mock.get_password_side_effect = KeyringError("Keychain access denied")
+    backend = KeyringStorage()
+
+    with pytest.raises(
+        CondaAuthError,
+        match="Unable to access stored credential for 'tester': Keychain access denied",
+    ):
+        backend.get_credential("tester")
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected_message"),
+    (
+        ("get", "Unable to access stored credential for 'tester'"),
+        ("set", "Unable to store credential for 'tester'"),
+        ("delete", "Unable to delete credential for 'tester'"),
+    ),
+    ids=("get", "set", "delete"),
+)
+def test_keyring_storage_explains_macos_keychain_errors(
+    monkeypatch, keyring, operation, expected_message
+):
+    keyring_mock, _ = keyring(None)
+    keychain_error = "Can't access password in keychain: (-25244, 'Unknown Error')"
+    if operation == "get":
+        keyring_mock.get_password_side_effect = KeyringError(keychain_error)
+    elif operation == "set":
+        keyring_mock.set_password_side_effect = KeyringError(keychain_error)
+    else:
+        keyring_mock.delete_password_side_effect = PasswordDeleteError(keychain_error)
+    monkeypatch.setattr("conda_auth.storage.keyring.sys.platform", "darwin")
+    backend = KeyringStorage()
+
+    if operation == "delete":
+        with pytest.warns(RuntimeWarning) as warnings:
+            backend.delete_credential("tester")
+        message = str(warnings[0].message)
+    else:
+        with pytest.raises(CondaAuthError) as exc_info:
+            if operation == "get":
+                backend.get_credential("tester")
+            else:
+                backend.set_credential(
+                    CredentialRecord(target="tester", auth_type="token", token="secret")
+                )
+        message = exc_info.value.message
+
+    assert expected_message in message
+    assert "Python interpreter changes" in message
+    assert "Keychain Access" in message
+
+
+def test_keyring_storage_wraps_set_errors(keyring):
+    keyring_mock, _ = keyring(None)
+    keyring_mock.set_password_side_effect = KeyringError("Keychain access denied")
+    backend = KeyringStorage()
+
+    with pytest.raises(
+        CondaAuthError,
+        match="Unable to store credential for 'tester': Keychain access denied",
+    ):
+        backend.set_credential(
+            CredentialRecord(target="tester", auth_type="token", token="secret")
+        )
