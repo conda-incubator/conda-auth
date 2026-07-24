@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
-from keyring.errors import PasswordDeleteError
 from requests.auth import HTTPBasicAuth
 
+from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.basic_auth import (
     HTTP_BASIC_AUTH_NAME,
@@ -81,6 +81,50 @@ def test_basic_auth_manager_rejects_non_string_credentials(keyring, settings, me
         manager.store(Channel("tester"), settings)
 
 
+def test_basic_auth_manager_uses_stored_username():
+    record = CredentialRecord(
+        target="tester",
+        auth_type=HTTP_BASIC_AUTH_NAME,
+        username="admin",
+        password="secret",
+    )
+
+    assert BasicAuthManager().get_username({}, record) == "admin"
+
+
+@pytest.mark.parametrize(
+    "settings",
+    (None, {USERNAME_PARAM_NAME: "admin"}),
+    ids=("missing-settings", "non-keyring-backend"),
+)
+def test_basic_auth_legacy_operations_require_keyring(mocker, settings):
+    mock_storage = mocker.patch("conda_auth.handlers.basic_auth.storage")
+    mock_storage.backend = object()
+    auth_manager = BasicAuthManager()
+    channel = Channel("tester")
+
+    assert auth_manager.migrate_legacy_credential_record(channel, settings, "tester") is None
+    auth_manager.delete_legacy_credential_record(channel, settings, "tester")
+
+
+def test_basic_auth_legacy_migration_uses_auth_target(keyring):
+    keyring_mock, _ = keyring(None)
+    keyring_mock.secrets[("conda-auth::http-basic::shared", "admin")] = "secret"
+
+    record = BasicAuthManager().migrate_legacy_credential_record(
+        Channel("tester"),
+        {USERNAME_PARAM_NAME: "admin"},
+        "shared",
+    )
+
+    assert record == CredentialRecord(
+        target="shared",
+        auth_type=HTTP_BASIC_AUTH_NAME,
+        username="admin",
+        password="secret",
+    )
+
+
 def test_basic_auth_manager_with_previous_secret(keyring):
     """
     Test to make sure when there is a password set, we retrieve it and set the
@@ -93,7 +137,7 @@ def test_basic_auth_manager_with_previous_secret(keyring):
     channel = Channel("tester")
 
     # setup mocks
-    keyring_mock, _ = keyring(secret)
+    keyring(secret)
 
     # run code under test
     manager.store(channel, settings)
@@ -101,7 +145,6 @@ def test_basic_auth_manager_with_previous_secret(keyring):
 
     # make assertions
     assert manager._cache == {channel.canonical_name: ("admin", secret)}
-    keyring_mock.get_password.assert_called_once()
 
 
 def test_basic_auth_manager_get_secret_cache_exists(keyring):
@@ -142,23 +185,27 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
     manager.remove_secret(channel, settings)
 
     # make assertions
-    keyring_mock.delete_password.assert_called_once()
+    assert keyring_mock.delete_password_calls == [
+        ("conda-auth::credential::tester", "credential"),
+        ("conda-auth::http-basic::tester", "username"),
+    ]
 
 
 def test_basic_auth_manager_remove_existing_secret_no_username(keyring):
     """
-    Test to make sure that when removing a password that exist it fails when no username is present
+    Test that structured credentials can be removed without legacy username metadata.
     """
     secret = "secret"
     settings = {}
     channel = Channel("tester")
 
     # setup mocks
-    keyring(secret)
+    keyring_mock, _ = keyring(secret)
 
     # run code under test
-    with pytest.raises(CondaAuthError, match="Username not found"):
-        manager.remove_secret(channel, settings)
+    manager.remove_secret(channel, settings)
+
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 def test_basic_auth_manager_remove_non_existing_secret(keyring):
@@ -166,20 +213,18 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
     Test make sure that when removing a secret that does not exist, the appropriate
     exception and message is raised and shown.
     """
-    secret = "secret"
     settings = {
         "username": "username",
     }
     channel = Channel("tester")
 
     # setup mocks
-    keyring_mock, _ = keyring(secret)
-    message = "Secret not found."
-    keyring_mock.delete_password.side_effect = PasswordDeleteError(message)
+    keyring_mock, _ = keyring(None)
+    keyring_mock.delete_password_side_effect = None
 
     # make assertions
-    with pytest.raises(CondaAuthError, match=f"Unable to remove secret: {message}"):
-        manager.remove_secret(channel, settings)
+    manager.remove_secret(channel, settings)
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 def test_basic_auth_handler(mocker, keyring):
@@ -210,8 +255,27 @@ def test_basic_auth_handler(mocker, keyring):
     HTTPBasicAuth(username, password)(expected_request)
 
     assert request.headers == expected_request.headers
-    keyring_mock.get_password.assert_called_once_with("conda-auth::http-basic::channel", username)
+    assert keyring_mock.get_password_calls == [
+        ("conda-auth::credential::channel", "credential"),
+        ("conda-auth::http-basic::channel", username),
+    ]
     keyring_mock.set_password.assert_not_called()
+
+
+def test_basic_auth_handler_preserves_existing_authorization(
+    monkeypatch,
+    context_factory,
+    request_factory,
+):
+    channel = Channel("tester")
+    manager._cache = {channel.canonical_name: ("username", "password")}
+    monkeypatch.setattr(manager, "_context", context_factory())
+    request = request_factory(headers={"Authorization": "Bearer existing"})
+
+    result = BasicAuthHandler(channel.canonical_name)(request)
+
+    assert result is request
+    assert request.headers == {"Authorization": "Bearer existing"}
 
 
 def test_basic_auth_handler_equals_methods(mocker, keyring):
@@ -268,7 +332,10 @@ def test_basic_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
     BasicAuthHandler(channel_name)
     BasicAuthHandler(channel_name)
 
-    keyring_mock.get_password.assert_called_once()
+    assert keyring_mock.get_password_calls == [
+        ("conda-auth::credential::channel", "credential"),
+        ("conda-auth::http-basic::channel", username),
+    ]
     keyring_mock.set_password.assert_not_called()
 
 
@@ -331,9 +398,10 @@ def test_basic_auth_handler_allows_plaintext_http_when_configured(
     HTTPBasicAuth(username, password)(expected_request)
 
     assert request.headers == expected_request.headers
-    keyring_mock.get_password.assert_called_once_with(
-        "conda-auth::http-basic::http://example.com/private-channel", username
-    )
+    assert keyring_mock.get_password_calls == [
+        ("conda-auth::credential::http://example.com/private-channel", "credential"),
+        ("conda-auth::http-basic::http://example.com/private-channel", username),
+    ]
     keyring_mock.set_password.assert_not_called()
 
 

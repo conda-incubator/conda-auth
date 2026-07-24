@@ -3,7 +3,6 @@ import json
 from conda.exceptions import CondaError
 
 from conda_auth.cli import SUCCESSFUL_LOGOUT_MESSAGE, auth
-from conda_auth.constants import PLUGIN_NAME
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME, manager
 
@@ -41,10 +40,10 @@ def test_logout_of_active_session(mocker, runner, keyring, condarc):
     assert SUCCESSFUL_LOGOUT_MESSAGE in result.output
     assert result.exit_code == 0, result.output
 
-    keyring_mock.delete_password.assert_called_once_with(
-        f"{PLUGIN_NAME}::{HTTP_BASIC_AUTH_NAME}::{channel_name}",
-        username,
-    )
+    assert keyring_mock.delete_password_calls == [
+        ("conda-auth::credential::tester", "credential"),
+        ("conda-auth::http-basic::tester", username),
+    ]
     assert channel_name not in manager._cache
     assert condarc.content == {
         "channel_settings": [

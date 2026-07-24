@@ -35,6 +35,7 @@ class FakeRequest:
 @dataclass
 class RecordingKeyring:
     secret: str | None
+    secrets: dict[tuple[str, str], str] = field(default_factory=dict)
     get_password_calls: list[tuple[str, str]] = field(default_factory=list)
     set_password_calls: list[tuple[str, str, str]] = field(default_factory=list)
     delete_password_calls: list[tuple[str, str]] = field(default_factory=list)
@@ -46,17 +47,21 @@ class RecordingKeyring:
         self.get_password_calls.append((key_id, username))
         if self.get_password_side_effect is not None:
             raise self.get_password_side_effect
-        return self.secret
+        if key_id.startswith("conda-auth::credential::") or key_id == "conda-auth::index":
+            return self.secrets.get((key_id, username))
+        return self.secrets.get((key_id, username), self.secret)
 
     def set_password(self, key_id: str, username: str, password: str) -> None:
         self.set_password_calls.append((key_id, username, password))
         if self.set_password_side_effect is not None:
             raise self.set_password_side_effect
+        self.secrets[(key_id, username)] = password
 
     def delete_password(self, key_id: str, username: str) -> None:
         self.delete_password_calls.append((key_id, username))
         if self.delete_password_side_effect is not None:
             raise self.delete_password_side_effect
+        self.secrets.pop((key_id, username), None)
 
 
 @dataclass
@@ -137,7 +142,37 @@ def keyring(mocker):
     def _keyring(secret):
         get_keyring = mocker.patch("conda_auth.storage.get_keyring")
         keyring_storage = mocker.patch("conda_auth.storage.keyring.keyring")
-        keyring_storage.get_password.return_value = secret
+        keyring_storage.secrets = {}
+        keyring_storage.get_password_calls = []
+        keyring_storage.set_password_calls = []
+        keyring_storage.delete_password_calls = []
+        keyring_storage.get_password_side_effect = None
+        keyring_storage.set_password_side_effect = None
+        keyring_storage.delete_password_side_effect = None
+
+        def get_password(key_id, username):
+            keyring_storage.get_password_calls.append((key_id, username))
+            if keyring_storage.get_password_side_effect is not None:
+                raise keyring_storage.get_password_side_effect
+            if key_id.startswith("conda-auth::credential::") or key_id == "conda-auth::index":
+                return keyring_storage.secrets.get((key_id, username))
+            return keyring_storage.secrets.get((key_id, username), secret)
+
+        def set_password(key_id, username, password):
+            keyring_storage.set_password_calls.append((key_id, username, password))
+            if keyring_storage.set_password_side_effect is not None:
+                raise keyring_storage.set_password_side_effect
+            keyring_storage.secrets[(key_id, username)] = password
+
+        def delete_password(key_id, username):
+            keyring_storage.delete_password_calls.append((key_id, username))
+            if keyring_storage.delete_password_side_effect is not None:
+                raise keyring_storage.delete_password_side_effect
+            keyring_storage.secrets.pop((key_id, username), None)
+
+        keyring_storage.get_password.side_effect = get_password
+        keyring_storage.set_password.side_effect = set_password
+        keyring_storage.delete_password.side_effect = delete_password
 
         return keyring_storage, get_keyring
 

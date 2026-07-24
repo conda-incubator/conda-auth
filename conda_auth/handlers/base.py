@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from dataclasses import replace
 from fnmatch import fnmatch
 from ipaddress import ip_address
 from urllib.parse import urlparse
@@ -13,6 +14,7 @@ from conda.common.url import urlparse as conda_urlparse
 from conda.models.channel import Channel
 
 from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
+from ..credentials import CredentialRecord
 from ..exceptions import CondaAuthError
 from ..storage import storage
 
@@ -135,6 +137,7 @@ class AuthManager(ABC):
             username,
             secret,
             allow_plaintext_http=allows_plaintext_http(settings),
+            settings=extra_params,
         )
 
         return username
@@ -146,7 +149,9 @@ class AuthManager(ABC):
         secret: str,
         *,
         allow_plaintext_http: bool = False,
-    ) -> None:
+        target: str | None = None,
+        settings: Mapping[str, object] | None = None,
+    ) -> CredentialRecord:
         """
         Saves the provided credentials to our credential store.
         """
@@ -154,7 +159,96 @@ class AuthManager(ABC):
             channel,
             allow_plaintext_http=allow_plaintext_http,
         )
-        storage.set_password(self.get_keyring_id(channel), username, secret)
+        record = self.create_credential_record(channel, username, secret, settings)
+        if target is not None:
+            record = replace(record, target=target)
+        storage.set_credential(record)
+        return record
+
+    def create_credential_record(
+        self,
+        channel: Channel,
+        username: str,
+        secret: str,
+        settings: Mapping[str, object] | None = None,
+    ) -> CredentialRecord:
+        """
+        Build the structured credential payload persisted by this manager.
+        """
+        return CredentialRecord(
+            target=channel.canonical_name,
+            auth_type=self.get_auth_type(),
+            username=username,
+            password=secret,
+        )
+
+    def get_credential_target(
+        self,
+        channel: Channel,
+        settings: Mapping[str, object] | None = None,
+    ) -> str:
+        if settings is not None:
+            target = settings.get("auth_target")
+            if isinstance(target, str):
+                return target
+        return channel.canonical_name
+
+    def get_credential_record(
+        self,
+        channel: Channel,
+        settings: Mapping[str, object] | None = None,
+    ) -> CredentialRecord | None:
+        """
+        Return the structured credential record for a channel, if present.
+        """
+        target = self.get_credential_target(channel, settings)
+        record = storage.get_credential(target)
+        if record is not None:
+            return record
+
+        return self.migrate_legacy_credential_record(channel, settings, target)
+
+    def migrate_legacy_credential_record(
+        self,
+        channel: Channel,
+        settings: Mapping[str, object] | None,
+        target: str,
+    ) -> CredentialRecord | None:
+        """
+        Migrate a pre-structured keyring entry for a channel, if this manager supports one.
+        """
+        return None
+
+    def legacy_credential_targets(self, channel: Channel, target: str) -> tuple[str, ...]:
+        """
+        Return possible pre-structured keyring targets for a channel.
+        """
+        targets = [target]
+        if channel.canonical_name != target:
+            targets.append(channel.canonical_name)
+        return tuple(targets)
+
+    def delete_credential_record(
+        self,
+        channel: Channel,
+        settings: Mapping[str, object] | None = None,
+    ) -> None:
+        """
+        Delete the structured credential record for a channel.
+        """
+        target = self.get_credential_target(channel, settings)
+        storage.delete_credential(target)
+        self.delete_legacy_credential_record(channel, settings, target)
+
+    def delete_legacy_credential_record(
+        self,
+        channel: Channel,
+        settings: Mapping[str, object] | None,
+        target: str,
+    ) -> None:
+        """
+        Delete a pre-structured keyring entry for a channel, if this manager supports one.
+        """
 
     def fetch_secret(
         self,
@@ -260,12 +354,6 @@ class AuthManager(ABC):
         """
         Implementations should return a ``tuple`` of ``str`` which represent the configuration
         values to use in the ``context.channel_settings`` object.
-        """
-
-    @abstractmethod
-    def get_keyring_id(self, channel: Channel) -> str:
-        """
-        Implementation should return the keyring id that will be used by the manager classes
         """
 
     @abstractmethod

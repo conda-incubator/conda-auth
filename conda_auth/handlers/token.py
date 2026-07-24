@@ -5,14 +5,16 @@ Token implementation for the conda auth handler plugin hook
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from urllib.parse import urlparse
 
 from conda.models.channel import Channel
 from conda.plugins.types import ChannelAuthBase
 
-from ..constants import PLUGIN_NAME
+from ..credentials import CredentialRecord
 from ..exceptions import CondaAuthError
 from ..storage import storage
+from ..storage.keyring import KeyringStorage
 from .base import AuthManager
 
 TOKEN_PARAM_NAME: str = "token"
@@ -32,33 +34,28 @@ Name used to refer to this authentication handler in configuration
 
 
 class TokenAuthManager(AuthManager):
-    def get_keyring_id(self, channel: Channel) -> str:
-        return f"{PLUGIN_NAME}::{TOKEN_NAME}::{channel.canonical_name}"
-
     def _fetch_secret(self, channel: Channel, settings: Mapping[str, object]) -> tuple[str, str]:
         """
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for secret.
         """
-        # First tried the value we passed in
+        record = self.get_credential_record(channel, settings)
+
+        # First try the value we passed in.
         token = settings.get(TOKEN_PARAM_NAME)
         if token is not None and not isinstance(token, str):
             raise CondaAuthError("Token not found")
 
-        if token is None:
-            # Try password manager if there was nothing there
-            keyring_id = self.get_keyring_id(channel)
-            token = storage.get_password(keyring_id, USERNAME)
+        if token is None and record is not None:
+            token = record.token
 
-            if token is None:
-                raise CondaAuthError("Token not found")
+        if token is None:
+            raise CondaAuthError("Token not found")
 
         return USERNAME, token
 
     def remove_secret(self, channel: Channel, settings: Mapping[str, object]) -> None:
-        keyring_id = self.get_keyring_id(channel)
-
-        storage.delete_password(keyring_id, USERNAME)
+        self.delete_credential_record(channel, settings)
 
     def get_auth_type(self) -> str:
         return TOKEN_NAME
@@ -68,6 +65,55 @@ class TokenAuthManager(AuthManager):
 
     def get_auth_class(self) -> type:
         return TokenAuthHandler
+
+    def create_credential_record(
+        self,
+        channel: Channel,
+        username: str,
+        secret: str,
+        settings: Mapping[str, object] | None = None,
+    ) -> CredentialRecord:
+        return CredentialRecord(
+            target=channel.canonical_name,
+            auth_type=TOKEN_NAME,
+            username=username,
+            token=secret,
+        )
+
+    def migrate_legacy_credential_record(
+        self,
+        channel: Channel,
+        settings: Mapping[str, object] | None,
+        target: str,
+    ) -> CredentialRecord | None:
+        backend = storage.backend
+        if not isinstance(backend, KeyringStorage):
+            return None
+
+        for legacy_target in self.legacy_credential_targets(channel, target):
+            token = backend.get_legacy_password(TOKEN_NAME, legacy_target, USERNAME)
+            if token is None:
+                continue
+
+            record = self.create_credential_record(channel, USERNAME, token, settings)
+            if record.target != target:
+                record = replace(record, target=target)
+            return record
+
+        return None
+
+    def delete_legacy_credential_record(
+        self,
+        channel: Channel,
+        settings: Mapping[str, object] | None,
+        target: str,
+    ) -> None:
+        backend = storage.backend
+        if not isinstance(backend, KeyringStorage):
+            return
+
+        for legacy_target in self.legacy_credential_targets(channel, target):
+            backend.delete_legacy_password(TOKEN_NAME, legacy_target, USERNAME)
 
 
 manager = TokenAuthManager()
