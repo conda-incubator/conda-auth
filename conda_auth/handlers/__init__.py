@@ -7,6 +7,14 @@ from .basic_auth import (
 from .basic_auth import (
     manager as basic_auth_manager,
 )
+from .oauth2 import (
+    OAUTH2_NAME,
+    OAuth2AuthHandler,
+    OAuth2Manager,
+)
+from .oauth2 import (
+    manager as oauth2_auth_manager,
+)
 from .token import (
     TOKEN_NAME,
     TokenAuthHandler,
@@ -21,9 +29,13 @@ __all__ = [
     "BasicAuthHandler",
     "BasicAuthManager",
     "HTTP_BASIC_AUTH_NAME",
+    "OAUTH2_NAME",
+    "OAuth2AuthHandler",
+    "OAuth2Manager",
     "TOKEN_NAME",
     "TokenAuthHandler",
     "TokenAuthManager",
     "basic_auth_manager",
+    "oauth2_auth_manager",
     "token_auth_manager",
 ]

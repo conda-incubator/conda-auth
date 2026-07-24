@@ -48,6 +48,14 @@ conda auth login example --token
 conda auth login https://example.com/my-protected-channel --token
 ```
 
+<h5>OAuth 2.0/OIDC authentication:</h5>
+
+```
+conda auth login https://example.com/my-protected-channel --oauth2 \
+  --oauth-issuer-url https://idp.example.com \
+  --oauth-client-id my-client
+```
+
 <h5>Removing credentials from your computer:</h5>
 
 ```
