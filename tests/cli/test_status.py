@@ -3,20 +3,21 @@ import json
 import pytest
 from conda.models.channel import Channel
 
-from conda_auth.cli import auth, channel_matches, get_status_targets
+from conda_auth.cli import auth
+from conda_auth.cli.status import channel_matches, get_status_targets
 from conda_auth.credentials import CredentialRecord
 from conda_auth.storage.keyring import KeyringStorage
 
 
-def test_status_lists_configured_stored_credentials(mocker, runner, keyring):
+def test_status_lists_configured_stored_credentials(monkeypatch, runner, keyring, context_factory):
     """
     Status lists records that are both configured and present in storage.
     """
     keyring(None)
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = [
-        {"channel": "tester", "auth": "token", "auth_target": "tester"}
-    ]
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory([{"channel": "tester", "auth": "token", "auth_target": "tester"}]),
+    )
     KeyringStorage().set_credential(
         CredentialRecord(
             target="tester",
@@ -35,13 +36,14 @@ def test_status_lists_configured_stored_credentials(mocker, runner, keyring):
     }
 
 
-def test_status_does_not_list_unconfigured_storage_records(mocker, runner, keyring):
+def test_status_does_not_list_unconfigured_storage_records(
+    monkeypatch, runner, keyring, context_factory
+):
     """
     Status derives listable targets from conda auth config, not secret enumeration.
     """
     keyring(None)
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = []
+    monkeypatch.setattr("conda_auth.cli.status.context", context_factory())
     KeyringStorage().set_credential(
         CredentialRecord(target="tester", auth_type="token", token="secret-token")
     )
@@ -52,15 +54,17 @@ def test_status_does_not_list_unconfigured_storage_records(mocker, runner, keyri
     assert result.output == "No credentials stored\n"
 
 
-def test_status_skips_configured_credentials_without_stored_record(mocker, runner, keyring):
+def test_status_skips_configured_credentials_without_stored_record(
+    monkeypatch, runner, keyring, context_factory
+):
     """
     Configured auth without an available secret is not reported as stored.
     """
     keyring(None)
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = [
-        {"channel": "tester", "auth": "token", "auth_target": "tester"}
-    ]
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory([{"channel": "tester", "auth": "token", "auth_target": "tester"}]),
+    )
 
     result = runner.invoke(auth, ["status", "--json"])
 
@@ -68,19 +72,25 @@ def test_status_skips_configured_credentials_without_stored_record(mocker, runne
     assert json.loads(result.output) == {"success": True, "credentials": []}
 
 
-def test_status_explicit_target_matches_configured_auth_target(mocker, runner, keyring):
+def test_status_explicit_target_matches_configured_auth_target(
+    monkeypatch, runner, keyring, context_factory
+):
     """
     Explicit status can resolve records through a configured auth_target.
     """
     keyring(None)
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = [
-        {
-            "channel": "https://example.com/private/*",
-            "auth": "token",
-            "auth_target": "https://example.com/private",
-        }
-    ]
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory(
+            [
+                {
+                    "channel": "https://example.com/private/*",
+                    "auth": "token",
+                    "auth_target": "https://example.com/private",
+                }
+            ]
+        ),
+    )
     KeyringStorage().set_credential(
         CredentialRecord(
             target="https://example.com/private",
@@ -96,17 +106,21 @@ def test_status_explicit_target_matches_configured_auth_target(mocker, runner, k
     assert result.output == "https://example.com/private: token\n"
 
 
-def test_status_targets_skip_invalid_settings(mocker):
+def test_status_targets_skip_invalid_settings(monkeypatch, context_factory):
     """
     Status ignores unrelated and malformed channel settings.
     """
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = [
-        None,
-        {"channel": "unconfigured"},
-        {"channel": 1, "auth": "token"},
-        {"channel": "tester", "auth": "token", "auth_target": 1},
-    ]
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory(
+            [
+                None,
+                {"channel": "unconfigured"},
+                {"channel": 1, "auth": "token"},
+                {"channel": "tester", "auth": "token", "auth_target": 1},
+            ]
+        ),
+    )
 
     assert get_status_targets() == ("tester",)
 
@@ -128,15 +142,20 @@ def test_status_channel_matching(configured_channel, channel_name, expected):
     assert channel_matches(configured_channel, Channel(channel_name)) is expected
 
 
-def test_status_displays_credential_expiration(mocker, runner, keyring):
+def test_status_displays_credential_expiration(
+    monkeypatch,
+    runner,
+    keyring,
+    context_factory,
+):
     """
     Text status includes an OAuth access token expiration time when available.
     """
     keyring(None)
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = [
-        {"channel": "tester", "auth": "oauth2", "auth_target": "tester"}
-    ]
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory([{"channel": "tester", "auth": "oauth2", "auth_target": "tester"}]),
+    )
     KeyringStorage().set_credential(
         CredentialRecord(
             target="tester",
