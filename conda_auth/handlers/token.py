@@ -4,9 +4,11 @@ Token implementation for the conda auth handler plugin hook
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 from string import Formatter
 
 from conda.models.channel import Channel
@@ -21,6 +23,11 @@ from .base import AuthManager
 TOKEN_PARAM_NAME: str = "token"
 """
 Name of the configuration parameter where token information is stored
+"""
+
+TOKEN_FILE_PARAM_NAME: str = "token_file"
+"""
+Name of the configuration parameter where token file information is stored
 """
 
 TOKEN_HEADER_PARAM_NAME: str = "token_header"
@@ -44,6 +51,9 @@ Default header value template used for bearer token authentication
 """
 
 HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
+TOKEN_FILE_ROOTS_ENV_VAR = "CONDA_AUTH_TOKEN_FILE_ROOTS"
+TOKEN_FILE_MAX_BYTES = 64 * 1024
+DEFAULT_TOKEN_FILE_ALLOWED_ROOTS = (Path("/run/secrets"),)
 
 USERNAME: str = "token"
 """
@@ -66,7 +76,17 @@ class TokenAuthManager(AuthManager):
         Gets the secrets by checking the keyring and then falling back to interrupting
         the program and asking the user for secret.
         """
-        record = self.get_credential_record(channel, settings)
+        record = None
+        token_file = settings.get(TOKEN_FILE_PARAM_NAME)
+        if token_file is not None and not isinstance(token_file, str):
+            raise CondaAuthError("Token file must be text")
+
+        if token_file is not None and settings.get(TOKEN_PARAM_NAME) is not None:
+            raise CondaAuthError("Token and token file cannot both be configured")
+
+        if token_file is None:
+            record = self.get_credential_record(channel, settings)
+
         token_header, token_template = get_token_header_config(settings, record)
 
         # First try the value we passed in.
@@ -74,23 +94,59 @@ class TokenAuthManager(AuthManager):
         if token is not None and not isinstance(token, str):
             raise CondaAuthError("Token not found")
 
+        if token is None and token_file is not None:
+            token = read_token_file(token_file)
+
         if token is None and record is not None:
             token = record.token
 
         if token is None:
             raise CondaAuthError("Token not found")
 
+        validate_token_value(token)
         self._header_cache[channel.canonical_name] = (token_header, token_template)
         return USERNAME, token
 
     def remove_secret(self, channel: Channel, settings: Mapping[str, object]) -> None:
+        if isinstance(settings.get(TOKEN_FILE_PARAM_NAME), str):
+            return
         self.delete_credential_record(channel, settings)
+
+    def save_credentials(
+        self,
+        channel: Channel,
+        username: str,
+        secret: str,
+        *,
+        allow_plaintext_http: bool = False,
+        target: str | None = None,
+        settings: Mapping[str, object] | None = None,
+    ) -> CredentialRecord:
+        if settings is not None and isinstance(settings.get(TOKEN_FILE_PARAM_NAME), str):
+            record = self.create_credential_record(channel, username, secret, settings)
+            if target is not None:
+                record = replace(record, target=target)
+            return record
+
+        return super().save_credentials(
+            channel,
+            username,
+            secret,
+            allow_plaintext_http=allow_plaintext_http,
+            target=target,
+            settings=settings,
+        )
 
     def get_auth_type(self) -> str:
         return TOKEN_NAME
 
     def get_config_parameters(self) -> tuple[str, ...]:
-        return (TOKEN_PARAM_NAME, TOKEN_HEADER_PARAM_NAME, TOKEN_TEMPLATE_PARAM_NAME)
+        return (
+            TOKEN_PARAM_NAME,
+            TOKEN_FILE_PARAM_NAME,
+            TOKEN_HEADER_PARAM_NAME,
+            TOKEN_TEMPLATE_PARAM_NAME,
+        )
 
     def get_auth_class(self) -> type:
         return TokenAuthHandler
@@ -155,7 +211,12 @@ class TokenAuthManager(AuthManager):
             return config
 
         settings = self.get_channel_settings(channel)
-        record = self.get_credential_record(channel, settings) if settings is not None else None
+        if settings is not None and settings.get(TOKEN_FILE_PARAM_NAME) is not None:
+            record = None
+        else:
+            record = (
+                self.get_credential_record(channel, settings) if settings is not None else None
+            )
         config = get_token_header_config(settings, record)
         self._header_cache[channel.canonical_name] = config
         return config
@@ -231,6 +292,65 @@ def validate_token_template(template: str) -> None:
         raise CondaAuthError(f"Token template is invalid: {exc}") from exc
     if "\r" in value or "\n" in value:
         raise CondaAuthError("Token template must not contain line breaks")
+
+
+def read_token_file(token_file: str) -> str:
+    path = Path(token_file).expanduser()
+    validate_token_file_path(path)
+
+    try:
+        with path.open(encoding="utf-8") as token_stream:
+            token = token_stream.read(TOKEN_FILE_MAX_BYTES + 1)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CondaAuthError(f"Unable to read token file {token_file!r}: {exc}") from exc
+
+    if len(token) > TOKEN_FILE_MAX_BYTES:
+        raise CondaAuthError("Token file is too large")
+
+    token = token.rstrip("\r\n")
+    validate_token_value(token)
+    return token
+
+
+def validate_token_file_path(path: Path) -> None:
+    if not path.is_absolute():
+        raise CondaAuthError("Token file path must be absolute")
+
+    resolved_path = path.resolve(strict=False)
+    allowed_roots = get_token_file_allowed_roots()
+    for root in allowed_roots:
+        resolved_root = root.resolve(strict=False)
+        if resolved_path == resolved_root or resolved_path.is_relative_to(resolved_root):
+            return
+
+    allowed_paths = ", ".join(str(root) for root in allowed_roots)
+    raise CondaAuthError(
+        f"Token file path must be under a configured secret mount root ({allowed_paths})."
+    )
+
+
+def get_token_file_allowed_roots() -> tuple[Path, ...]:
+    configured_roots = os.environ.get(TOKEN_FILE_ROOTS_ENV_VAR)
+    if configured_roots is None:
+        return DEFAULT_TOKEN_FILE_ALLOWED_ROOTS
+
+    roots = tuple(
+        Path(root).expanduser() for root in configured_roots.split(os.pathsep) if root.strip()
+    )
+    if not roots:
+        raise CondaAuthError(f"{TOKEN_FILE_ROOTS_ENV_VAR} must include at least one path")
+    if any(not root.is_absolute() for root in roots):
+        raise CondaAuthError(f"{TOKEN_FILE_ROOTS_ENV_VAR} must contain absolute paths")
+    return roots
+
+
+def validate_token_value(token: str) -> None:
+    if token == "":
+        raise CondaAuthError("Token must not be empty")
+    if "\r" in token or "\n" in token:
+        raise CondaAuthError("Token must not contain line breaks")
+    if any(ord(character) < 32 or ord(character) == 127 for character in token):
+        raise CondaAuthError("Token must not contain control characters")
 
 
 class TokenAuthHandler(ChannelAuthBase):

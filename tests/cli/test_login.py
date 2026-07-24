@@ -1,16 +1,33 @@
+from __future__ import annotations
+
 import json
 
 import pytest
 from conda.exceptions import CondaError
 
-from conda_auth.cli import SUCCESSFUL_LOGIN_MESSAGE, auth
+from conda_auth.cli import auth
+from conda_auth.constants import SUCCESSFUL_LOGIN_MESSAGE
 from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
-from conda_auth.handlers.token import TOKEN_NAME, USERNAME, TokenAuthManager
+from conda_auth.handlers.token import (
+    TOKEN_FILE_ROOTS_ENV_VAR,
+    TOKEN_NAME,
+    USERNAME,
+    TokenAuthManager,
+)
 from conda_auth.storage import storage
 
 
-def test_login_basic_auth_no_options(mocker, runner, keyring, condarc):
+def write_mounted_token_file(tmp_path, monkeypatch, content: str = "secret-token\n"):
+    secret_root = tmp_path / "secrets"
+    secret_root.mkdir()
+    monkeypatch.setenv(TOKEN_FILE_ROOTS_ENV_VAR, str(secret_root))
+    token_file = secret_root / "conda_auth_secret"
+    token_file.write_text(content)
+    return token_file
+
+
+def test_login_basic_auth_no_options(monkeypatch, runner, keyring, condarc):
     """
     Runs the login command with no additional CLI options defined (e.g. --username)
     """
@@ -18,12 +35,11 @@ def test_login_basic_auth_no_options(mocker, runner, keyring, condarc):
     secret = "password"
     channel_name = "tester"
 
-    # setup mocks
+    # Interactive prompts provide credentials when CLI options are omitted.
     keyring(None)
-    mocker.patch("conda_auth.cli.channel.prompt_text", return_value=username)
-    mocker.patch("conda_auth.cli.channel.prompt_secret", return_value=secret)
+    monkeypatch.setattr("builtins.input", lambda prompt: username)
+    monkeypatch.setattr("conda_auth.cli.channel.getpass", lambda prompt: secret)
 
-    # run command
     result = runner.invoke(auth, ["login", channel_name, "--basic"])
 
     assert result.exit_code == 0, result.output
@@ -36,10 +52,9 @@ def test_login_with_options_basic_auth(runner, keyring, condarc):
     """
     channel_name = "tester"
 
-    # setup mocks
+    # Explicit CLI credentials should not need existing keyring state.
     keyring(None)
 
-    # run command
     result = runner.invoke(
         auth,
         ["login", channel_name, "--basic", "--username", "test", "--password", "test"],
@@ -62,11 +77,11 @@ def test_login_with_options_basic_auth(runner, keyring, condarc):
         ),
         (
             ["login", "tester", "--token", "token", "--username", "user", "--json"],
-            "Option 'username' cannot be used with 'token' or 'oauth2'",
+            "Options 'username' and 'password' can only be used with 'basic'",
         ),
         (
             ["login", "tester", "--token", "token", "--password", "password", "--json"],
-            "Option 'password' cannot be used with 'token' or 'oauth2'",
+            "Options 'username' and 'password' can only be used with 'basic'",
         ),
         (
             ["login", "tester", "--basic", "--header", "X-Auth", "--json"],
@@ -100,7 +115,7 @@ def test_login_validation_errors_raise_conda_error(runner, keyring, condarc, arg
     assert exc_type == CondaAuthError
     assert exception.message == message
     assert result.output == ""
-    keyring_mock.set_password.assert_not_called()
+    assert keyring_mock.set_password_calls == []
     assert condarc.content == {}
 
 
@@ -124,8 +139,8 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
 
     # Transport validation happens before interactive secret prompts.
     keyring_mock, _ = keyring(None)
-    monkeypatch.setattr("conda_auth.cli.channel.prompt_text", fail_prompt)
-    monkeypatch.setattr("conda_auth.cli.channel.prompt_secret", fail_prompt)
+    monkeypatch.setattr("builtins.input", fail_prompt)
+    monkeypatch.setattr("conda_auth.cli.channel.getpass", fail_prompt)
 
     result = runner.invoke(auth, args)
     exc_type, exception, _ = result.exc_info
@@ -133,8 +148,8 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
     assert result.exit_code == 1, result.output
     assert exc_type == CondaAuthError
     assert "insecure HTTP channel" in exception.message
-    keyring_mock.get_password.assert_not_called()
-    keyring_mock.set_password.assert_not_called()
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
     assert condarc.content == {}
 
 
@@ -158,12 +173,7 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
                 "auth_target": "http://example.com/private-channel",
                 "auth_allow_plaintext_http": True,
             },
-            {
-                "target": "http://example.com/private-channel",
-                "auth_type": "http-basic",
-                "username": "user",
-                "password": "password",
-            },
+            {"auth_type": "http-basic", "username": "user", "password": "password"},
         ),
         (
             [
@@ -179,12 +189,7 @@ def test_login_rejects_plaintext_http_before_reading_secrets(
                 "auth_target": "http://example.com/private-channel",
                 "auth_allow_plaintext_http": True,
             },
-            {
-                "target": "http://example.com/private-channel",
-                "auth_type": "token",
-                "username": "token",
-                "token": "token",
-            },
+            {"auth_type": "token", "username": "token", "token": "token"},
         ),
     ),
     ids=("basic", "token"),
@@ -226,7 +231,7 @@ def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring
 
     assert exc_type == CondaAuthError
     assert "Could not save file" == exception.message
-    keyring_mock.set_password.assert_not_called()
+    assert keyring_mock.set_password_calls == []
 
 
 @pytest.mark.parametrize(
@@ -250,7 +255,7 @@ def test_login_error_when_storing_secret_reports_rollback(
 ):
     """Report credential storage errors and any rollback failure."""
     keyring_mock, _ = keyring(None)
-    keyring_mock.set_password.side_effect = CondaAuthError("Could not save secret")
+    keyring_mock.set_password_side_effect = CondaAuthError("Could not save secret")
     if rollback_error is not None:
         condarc.__exit__.side_effect = [None, rollback_error]
 
@@ -264,7 +269,7 @@ def test_login_error_when_storing_secret_reports_rollback(
     assert exception.message == message
     assert condarc.content == {"channel_settings": []}
     if rollback_error is not None:
-        assert exception.__cause__ is keyring_mock.set_password.side_effect
+        assert exception.__cause__ is keyring_mock.set_password_side_effect
 
 
 def test_login_error_when_storing_secret_preserves_non_auth_settings(runner, keyring, condarc):
@@ -272,7 +277,7 @@ def test_login_error_when_storing_secret_preserves_non_auth_settings(runner, key
 
     # Rolling back auth settings must not remove other channel-scoped conda settings.
     keyring_mock, _ = keyring(None)
-    keyring_mock.set_password.side_effect = CondaAuthError("Could not save secret")
+    keyring_mock.set_password_side_effect = CondaAuthError("Could not save secret")
     condarc.content = {"channel_settings": [{"channel": channel_name, "ssl_verify": False}]}
 
     result = runner.invoke(
@@ -468,7 +473,7 @@ def test_login_token(monkeypatch, runner, keyring, condarc, context_factory):
     """
     channel_name = "tester"
 
-    # setup mocks
+    # No previous channel setting exists for this token login.
     monkeypatch.setattr("conda_auth.cli.channel.context", context_factory())
     keyring(None)
 
@@ -541,13 +546,114 @@ def test_login_token_persists_custom_header_config(runner, keyring, condarc, con
     assert token_manager.get_header_config(channel_name) == ("X-Auth", "Token {token}")
 
 
+def test_login_token_file_persists_reference_without_storing_secret(
+    tmp_path, monkeypatch, runner, keyring, condarc, context_factory
+):
+    """Token-file login stores only a file reference and token header metadata."""
+    channel_name = "https://repo.example.com/private-channel"
+    token_file = write_mounted_token_file(tmp_path, monkeypatch)
+    keyring_mock, _ = keyring(None)
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            channel_name,
+            "--token-file",
+            str(token_file),
+            "--header",
+            "X-Auth",
+            "--token-template",
+            "Token {token}",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    assert condarc.content["channel_settings"] == [
+        {
+            "channel": channel_name,
+            "auth": TOKEN_NAME,
+            "auth_target": channel_name,
+            "token_file": str(token_file),
+            "token_header": "X-Auth",
+            "token_template": "Token {token}",
+        }
+    ]
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+    assert keyring_mock.secrets == {}
+
+    context = context_factory(condarc.content["channel_settings"], channels=(channel_name,))
+    token_manager = TokenAuthManager(context)
+
+    assert token_manager.get_secret(channel_name) == (USERNAME, "secret-token")
+    assert token_manager.get_header_config(channel_name) == ("X-Auth", "Token {token}")
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
+def test_login_token_file_rejects_path_outside_secret_root(
+    tmp_path, monkeypatch, runner, keyring, condarc
+):
+    """Token-file login rejects arbitrary host filesystem paths before config writes."""
+    channel_name = "https://repo.example.com/private-channel"
+    secret_root = tmp_path / "secrets"
+    secret_root.mkdir()
+    monkeypatch.setenv(TOKEN_FILE_ROOTS_ENV_VAR, str(secret_root))
+    token_file = tmp_path / "conda_auth_secret"
+    token_file.write_text("secret-token\n")
+    keyring_mock, _ = keyring(None)
+
+    result = runner.invoke(
+        auth,
+        ["login", channel_name, "--token-file", str(token_file)],
+    )
+
+    exc_type, exception, _ = result.exc_info
+    assert result.exit_code != 0
+    assert exc_type == CondaAuthError
+    assert "secret mount root" in exception.message
+    assert condarc.content == {}
+    assert keyring_mock.get_password_calls == []
+    assert keyring_mock.set_password_calls == []
+
+
+def test_login_token_file_verify_uses_file_secret_without_storing_it(
+    tmp_path, monkeypatch, runner, keyring, condarc
+):
+    channel_name = "https://repo.example.com/private-channel"
+    token_file = write_mounted_token_file(tmp_path, monkeypatch)
+    keyring_mock, _ = keyring(None)
+    verification_calls = []
+
+    def verify_credentials(channel, record):
+        verification_calls.append((channel, record))
+
+    monkeypatch.setattr("conda_auth.cli.channel.verify_channel_credentials", verify_credentials)
+
+    result = runner.invoke(
+        auth,
+        ["login", channel_name, "--token-file", str(token_file), "--verify"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(verification_calls) == 1
+    channel, record = verification_calls[0]
+    assert channel.canonical_name == channel_name
+    assert record.target == channel_name
+    assert record.auth_type == TOKEN_NAME
+    assert record.token == "secret-token"
+    assert keyring_mock.set_password_calls == []
+    assert keyring_mock.secrets == {}
+
+
 def test_login_token_json(runner, keyring, condarc):
     """
     Test successful login with token and JSON output.
     """
     channel_name = "tester"
 
-    # setup mocks
+    # Token value is supplied on the command line, so keyring starts empty.
     keyring(None)
 
     result = runner.invoke(auth, ["login", channel_name, "--token", "token", "--json"])
@@ -603,39 +709,11 @@ def test_login_token_no_options(monkeypatch, runner, keyring, condarc):
     """
     channel_name = "tester"
 
-    # setup mocks
+    # Token input is prompted only when the token option has no value.
     keyring(None)
-    monkeypatch.setattr("conda_auth.cli.channel.prompt_secret", lambda prompt: "token")
+    monkeypatch.setattr("conda_auth.cli.channel.getpass", lambda prompt: "token")
 
     result = runner.invoke(auth, ["login", channel_name, "--token"])
 
     assert result.exit_code == 0, result.output
     assert SUCCESSFUL_LOGIN_MESSAGE in result.output
-
-
-@pytest.mark.parametrize(
-    "option,message",
-    (
-        ("--username", "Option 'username' cannot be used with 'token' or 'oauth2'"),
-        ("--password", "Option 'password' cannot be used with 'token' or 'oauth2'"),
-    ),
-)
-def test_login_token_rejects_basic_auth_options(runner, keyring, condarc, option, message):
-    """
-    Test to make sure token login rejects options meant for basic auth.
-    """
-    channel_name = "tester"
-
-    # setup mocks
-    keyring(None)
-
-    result = runner.invoke(
-        auth,
-        ["login", channel_name, "--token", "token", option, "value"],
-    )
-    exc_type, exception, _ = result.exc_info
-
-    assert result.exit_code == 1, result.output
-    assert exc_type is CondaAuthError
-    assert exception.message == message
-    assert result.output == ""
