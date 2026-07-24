@@ -288,15 +288,188 @@ def test_login_error_when_storing_secret_preserves_non_auth_settings(runner, key
     }
 
 
-def test_login_token(mocker, runner, keyring, condarc):
+def test_login_does_not_verify_without_verify_option(monkeypatch, runner, keyring, condarc):
+    channel_name = "tester"
+    keyring(None)
+
+    def verify_credentials(channel, record):
+        raise AssertionError("Credential verification should be opt-in")
+
+    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+
+    result = runner.invoke(
+        auth,
+        ["login", channel_name, "--basic", "--username", "user", "--password", "password"],
+    )
+
+    assert result.exit_code == 0, result.output
+
+
+def test_login_verify_uses_stored_record(monkeypatch, runner, keyring, condarc):
+    channel_name = "https://repo.example.com/private-channel"
+    keyring(None)
+    verification_calls = []
+
+    def verify_credentials(channel, record):
+        verification_calls.append((channel, record))
+
+    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            channel_name,
+            "--token",
+            "token",
+            "--header",
+            "X-Auth",
+            "--token-template",
+            "Token {token}",
+            "--verify",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(verification_calls) == 1
+    channel, record = verification_calls[0]
+    assert channel.canonical_name == channel_name
+    assert record.target == channel_name
+    assert record.auth_type == TOKEN_NAME
+    assert record.token == "token"
+    assert record.token_header == "X-Auth"
+    assert record.token_template == "Token {token}"
+
+
+def test_login_verify_failure_removes_credential_and_auth_settings(
+    monkeypatch, runner, keyring, condarc
+):
+    channel_name = "tester"
+    keyring(None)
+
+    def verify_credentials(channel, record):
+        raise CondaAuthError("Could not verify credentials")
+
+    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            channel_name,
+            "--basic",
+            "--username",
+            "user",
+            "--password",
+            "password",
+            "--verify",
+        ],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert result.exit_code == 1, result.output
+    assert exc_type == CondaAuthError
+    assert exception.message == "Could not verify credentials"
+    assert condarc.content == {"channel_settings": []}
+    assert storage.get_credential(channel_name) is None
+
+
+def test_login_verify_failure_removes_config_before_credential(
+    monkeypatch, runner, keyring, condarc
+):
+    channel_name = "tester"
+    keyring(None)
+    events = []
+
+    def verify_credentials(channel, record):
+        raise CondaAuthError("Could not verify credentials")
+
+    def remove_settings(config, channel):
+        events.append("remove-settings")
+        config.content["channel_settings"] = []
+        return True
+
+    delete_credential = storage.delete_credential
+
+    def delete_record(target):
+        events.append("delete-credential")
+        delete_credential(target)
+
+    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+    monkeypatch.setattr("conda_auth.cli.remove_channel_settings", remove_settings)
+    monkeypatch.setattr("conda_auth.cli.storage.delete_credential", delete_record)
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            channel_name,
+            "--basic",
+            "--username",
+            "user",
+            "--password",
+            "password",
+            "--verify",
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert events == ["remove-settings", "delete-credential"]
+
+
+def test_login_verify_failure_revokes_oauth_record(monkeypatch, runner, keyring, condarc):
+    channel_name = "https://repo.example.com/private"
+    keyring(None)
+    revoked = []
+
+    def perform_oauth_login(config):
+        return CredentialRecord(
+            target="",
+            auth_type="oauth2",
+            username="oauth2",
+            access_token="access-token",
+            refresh_token="refresh-token",
+            token_endpoint="https://idp.example.com/token",
+            revocation_endpoint="https://idp.example.com/revoke",
+            client_id="client",
+        )
+
+    def verify_credentials(channel, record):
+        raise CondaAuthError("Could not verify credentials")
+
+    def revoke_record(record):
+        revoked.append(record)
+
+    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+    monkeypatch.setattr("conda_auth.cli.verify_channel_credentials", verify_credentials)
+    monkeypatch.setattr("conda_auth.cli.revoke_oauth_record", revoke_record)
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            channel_name,
+            "--oauth2",
+            "--oauth-client-id",
+            "client",
+            "--verify",
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert len(revoked) == 1
+    assert revoked[0].access_token == "access-token"
+    assert storage.get_credential(channel_name) is None
+
+
+def test_login_token(monkeypatch, runner, keyring, condarc, context_factory):
     """
     Test successful login with token
     """
     channel_name = "tester"
 
     # setup mocks
-    mock_context = mocker.patch("conda_auth.cli.context")
-    mock_context.channel_settings = []
+    monkeypatch.setattr("conda_auth.cli.context", context_factory())
     keyring(None)
 
     result = runner.invoke(auth, ["login", channel_name, "--token", "token"])
