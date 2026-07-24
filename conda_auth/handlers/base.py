@@ -100,6 +100,23 @@ def validate_secure_channel(
         )
 
 
+def channel_matches(configured_channel: str, channel: Channel) -> bool:
+    """
+    Match configured channel names the same way conda selects auth handlers.
+    """
+    if configured_channel == channel.canonical_name:
+        return True
+
+    parsed_channel = conda_urlparse(channel.base_url)
+    parsed_setting = conda_urlparse(configured_channel)
+    if parsed_setting.scheme != parsed_channel.scheme:
+        return False
+
+    channel_url = parsed_channel.netloc + parsed_channel.path
+    pattern = parsed_setting.netloc + parsed_setting.path
+    return fnmatch(channel_url, pattern)
+
+
 class AuthManager(ABC):
     """
     Defines an interface for auth handlers to use within plugin
@@ -313,17 +330,7 @@ class AuthManager(ABC):
         """
         Match configured channel names the same way conda selects auth handlers.
         """
-        if configured_channel == channel.canonical_name:
-            return True
-
-        parsed_channel = conda_urlparse(channel.base_url)
-        parsed_setting = conda_urlparse(configured_channel)
-        if parsed_setting.scheme != parsed_channel.scheme:
-            return False
-
-        channel_url = parsed_channel.netloc + parsed_channel.path
-        pattern = parsed_setting.netloc + parsed_setting.path
-        return fnmatch(channel_url, pattern)
+        return channel_matches(configured_channel, channel)
 
     def cache_clear(self, channel_name: str | None = None) -> None:
         """

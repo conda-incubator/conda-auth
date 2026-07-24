@@ -72,9 +72,7 @@ process listings. Prefer the prompt-based command when working interactively.
 
 ### Token authentication
 
-The following examples are for authenticating with channels using token based authentication.
-
-For [anaconda.org](https://anaconda.org) channels:
+Use `--token` for bearer/header token authentication:
 
 ```
 conda auth login <channel_name> --token
@@ -230,11 +228,12 @@ You can do this by running the following command:
 conda auth logout <channel_name>
 ```
 
-Both `login` and `logout` support JSON output for automation:
+`login`, `logout`, and `status` support JSON output for automation:
 
 ```
 conda auth login <channel_name> --token --json
 conda auth logout <channel_name> --json
+conda auth status --json
 ```
 
 `status` output is redacted and does not print stored tokens, passwords, OAuth 2.0

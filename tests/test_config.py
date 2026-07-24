@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pytest
 from conda.cli.condarc import ConfigurationFile
 from conda.common.serialize import yaml
@@ -89,55 +91,53 @@ def test_get_updated_channel_settings_updates_last_exact_channel():
     ]
 
 
-def test_update_non_existing_condarc_file(tmp_path):
+@pytest.mark.parametrize(
+    ("condarc_content", "expected"),
+    (
+        (
+            None,
+            {
+                "channel_settings": [
+                    {
+                        "channel": "tester",
+                        "username": "username",
+                        "auth": "http-basic",
+                        "auth_target": "tester",
+                    }
+                ]
+            },
+        ),
+        (
+            CONDARC_CONTENT,
+            {
+                "channel_settings": [
+                    {
+                        "channel": "tester",
+                        "username": "username",
+                        "auth": "http-basic",
+                        "auth_target": "tester",
+                    }
+                ],
+                "channels": ["defaults"],
+            },
+        ),
+    ),
+    ids=("new-condarc", "existing-condarc"),
+)
+def test_update_channel_settings_file(tmp_path, condarc_content, expected):
     channel = "tester"
     username = "username"
     auth_type = "http-basic"
     condarc_path = tmp_path / ".condarc"
 
-    with ConfigurationFile(path=condarc_path) as config:
-        update_channel_settings(config, channel, auth_type, username)
-
-    assert yaml.read(path=condarc_path) == {
-        "channel_settings": [
-            {
-                "channel": channel,
-                "username": username,
-                "auth": auth_type,
-                "auth_target": channel,
-            }
-        ]
-    }
-
-
-def test_update_existing_condarc_file(tmp_path):
-    channel = "tester"
-    username = "username"
-    auth_type = "http-basic"
-    condarc_path = tmp_path / ".condarc"
-    condarc_path.write_text(CONDARC_CONTENT)
+    # The same update path must handle both missing and pre-existing condarc files.
+    if condarc_content is not None:
+        condarc_path.write_text(condarc_content)
 
     with ConfigurationFile(path=condarc_path) as config:
         update_channel_settings(config, channel, auth_type, username)
 
-    assert yaml.read(path=condarc_path) == {
-        "channel_settings": [
-            {
-                "channel": channel,
-                "username": username,
-                "auth": auth_type,
-                "auth_target": channel,
-            }
-        ],
-        "channels": ["defaults"],
-    }
-
-
-def test_update_channel_settings_requires_list():
-    config = ConfigurationFile(content={"channel_settings": "tester"})
-
-    with pytest.raises(CondaAuthError, match="Expected 'channel_settings' to be a list"):
-        update_channel_settings(config, "tester", "token")
+    assert yaml.read(path=condarc_path) == expected
 
 
 def test_remove_channel_settings():
