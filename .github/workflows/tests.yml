@@ -106,13 +106,12 @@ jobs:
           clean: true
           fetch-depth: 0
 
-      # TODO: If this is ever promoted to conda, we should upload to "conda-canary" organization instead
       - name: Create and upload canary build
         uses: conda/actions/canary-release@7f6830b1428a9bd47f0b068892c77eae95207037 # v26.1.0
         with:
           package-name: ${{ github.event.repository.name }}
           subdir: ${{ matrix.subdir }}
-          anaconda-org-channel: thath
+          anaconda-org-channel: conda-canary
           anaconda-org-label: ${{ github.ref_name == 'main' && 'dev' || format('{0}-{1}', github.event.repository.name, github.ref_name) }}
-          anaconda-org-token: ${{ secrets.ANACONDA_ORG_TOKEN }}
+          anaconda-org-token: ${{ secrets.ANACONDA_ORG_CONDA_CANARY_TOKEN }}
           conda-build-arguments: '--override-channels -c defaults'
