@@ -2,7 +2,7 @@ import pytest
 from conda.cli.condarc import ConfigurationFile
 from conda.common.serialize import yaml
 
-from conda_auth.cli import (
+from conda_auth.cli.config import (
     get_updated_channel_settings,
     remove_channel_settings,
     update_channel_settings,
