@@ -104,8 +104,6 @@ def test_status_explicit_target_matches_configured_auth_target(
 
     assert result.exit_code == 0, result.output
     assert result.output == "https://example.com/private: token\n"
-
-
 def test_status_targets_skip_invalid_settings(monkeypatch, context_factory):
     """
     Status ignores unrelated and malformed channel settings.
@@ -169,3 +167,58 @@ def test_status_displays_credential_expiration(
 
     assert result.exit_code == 0, result.output
     assert result.output == "tester: oauth2 expires_at=3600\n"
+
+
+def test_oauth_login_uses_explicit_endpoint_options(monkeypatch, runner, keyring, condarc):
+    """Generic OAuth login uses caller-supplied endpoint configuration."""
+    keyring(None)
+    seen = {}
+
+    def perform_oauth_login(config):
+        seen["config"] = config
+        return CredentialRecord(
+            target="",
+            auth_type="oauth2",
+            username="oauth2",
+            access_token="access-token",
+            refresh_token="refresh-token",
+            token_endpoint="https://idp.example.com/token",
+            revocation_endpoint="https://idp.example.com/revoke",
+            client_id=config.client_id,
+            issuer_url=config.issuer_url,
+            scopes=config.scopes,
+        )
+
+    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            "https://repo.example.com/private",
+            "--oauth2",
+            "--oauth-issuer-url",
+            "https://idp.example.com",
+            "--oauth-client-id",
+            "client-id",
+            "--oauth-scope",
+            "channel:read",
+            "--oauth-flow",
+            "device-code",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert seen["config"].issuer_url == "https://idp.example.com"
+    assert seen["config"].client_id == "client-id"
+    assert seen["config"].flow == "device-code"
+    assert seen["config"].scopes == ("channel:read",)
+    assert condarc.content == {
+        "channel_settings": [
+            {
+                "channel": "https://repo.example.com/private",
+                "auth": "oauth2",
+                "auth_target": "https://repo.example.com/private",
+            }
+        ]
+    }

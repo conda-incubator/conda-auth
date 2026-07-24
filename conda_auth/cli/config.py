@@ -6,6 +6,15 @@ from conda.cli.condarc import ConfigurationFile
 
 from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from ..exceptions import CondaAuthError
+from ..oauth2_client import (
+    OAUTH_CLIENT_ID_PARAM_NAME,
+    OAUTH_CLIENT_SECRET_PARAM_NAME,
+    OAUTH_FLOW_PARAM_NAME,
+    OAUTH_ISSUER_URL_PARAM_NAME,
+    OAUTH_REDIRECT_URI_PARAM_NAME,
+    OAUTH_SCOPE_PARAM_NAME,
+    OAUTH_USER_AGENT_PARAM_NAME,
+)
 
 AUTH_CHANNEL_SETTING_KEYS = frozenset(
     (
@@ -14,6 +23,13 @@ AUTH_CHANNEL_SETTING_KEYS = frozenset(
         "username",
         "password",
         "token",
+        OAUTH_ISSUER_URL_PARAM_NAME,
+        OAUTH_CLIENT_ID_PARAM_NAME,
+        OAUTH_CLIENT_SECRET_PARAM_NAME,
+        OAUTH_FLOW_PARAM_NAME,
+        OAUTH_SCOPE_PARAM_NAME,
+        OAUTH_REDIRECT_URI_PARAM_NAME,
+        OAUTH_USER_AGENT_PARAM_NAME,
         AUTH_ALLOW_PLAINTEXT_HTTP_PARAM,
     )
 )

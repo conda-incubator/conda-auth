@@ -59,10 +59,55 @@ Passing tokens directly on the command line may expose them in shell history or 
 listings. Prefer the prompt-based command when working interactively.
 ```
 
-For other channels not hosted at anaconda.org, use the full URL of the channel:
+The request handler sends this as `Authorization: Bearer <token>` and does not
+overwrite an existing `Authorization` header.
+
+### OAuth 2.0/OIDC authentication
+
+OAuth 2.0 is available for OIDC services that support discovery plus
+authorization-code or device-code login flows:
 
 ```
-conda auth login https://example.com/my-protected-channel --token
+conda auth login https://repo.example.com --oauth2 \
+  --oauth-issuer-url https://idp.example.com \
+  --oauth-client-id my-client \
+  --oauth-flow auto
+```
+
+Supported OAuth 2.0 modes:
+
+- `auto`: tries browser authorization-code login first, and falls back to device-code
+  when the browser cannot be opened
+- `auth-code`: browser login with a localhost callback and PKCE
+- `device-code`: headless login for SSH and terminal-only environments
+
+Additional OAuth options include `--oauth-client-secret`, repeatable
+`--oauth-scope`, `--oauth-redirect-uri`, and `--user-agent`. Conda auth refreshes
+OAuth 2.0 access tokens before expiry when a refresh token is available, and
+attempts token revocation on logout when the OAuth server advertises a revocation
+endpoint.
+
+The password grant, implicit flow, and client credentials grant are not supported.
+
+### Channel transports
+
+Conda auth supports authenticated HTTP(S) channel services. Remote channels must use
+HTTPS by default, and FTP and file channels are not supported by these auth handlers.
+
+Conda's `s3://` support currently uses boto3's normal AWS credential chain, such as
+environment variables, profiles, and instance credentials. Conda auth does not set
+process-wide AWS environment variables. First-class channel-scoped S3 credentials
+need a future conda-side S3 credential hook.
+
+For an explicitly trusted plaintext HTTP channel, opt in per channel:
+
+```
+conda auth login http://example.com/my-protected-channel --basic --allow-plaintext-http
+```
+
+```{caution}
+Plaintext HTTP sends credentials without transport encryption. Prefer HTTPS whenever
+possible, and only use `--allow-plaintext-http` for endpoints you explicitly trust.
 ```
 
 ### Logging out of a channel
@@ -83,6 +128,9 @@ Both `login` and `logout` support JSON output for automation:
 conda auth login <channel_name> --token --json
 conda auth logout <channel_name> --json
 ```
+
+`status` output is redacted and does not print stored tokens, passwords, OAuth 2.0
+access tokens, or refresh tokens.
 
 ### Storage backend unavailable?
 
