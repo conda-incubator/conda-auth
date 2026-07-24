@@ -15,9 +15,28 @@ from conda_auth.handlers.token import (
     USERNAME,
     TokenAuthHandler,
     TokenAuthManager,
-    is_anaconda_dot_org,
     manager,
 )
+from conda_auth.storage.keyring import KeyringStorage
+
+
+def store_custom_token_credential(
+    channel: str,
+    token: str,
+    *,
+    token_header: str,
+    token_template: str,
+) -> None:
+    KeyringStorage().set_credential(
+        CredentialRecord(
+            target=channel,
+            auth_type=TOKEN_NAME,
+            username=USERNAME,
+            token=token,
+            token_header=token_header,
+            token_template=token_template,
+        )
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -30,37 +49,16 @@ def clean_up_manager_cache():
 
 
 @pytest.mark.parametrize(
-    "channel_name,expected",
-    (
-        ("conda-forge", True),
-        ("http://localhost", False),
-        ("https://notanaconda.org/channel", False),
-        ("https://anaconda.org.evil.example/channel", False),
-        ("<unknown>", False),
-    ),
-)
-def test_is_anaconda_dot_org(channel_name, expected):
-    """
-    Tests the ``is_anaconda_dot_org`` function
-    """
-    assert is_anaconda_dot_org(channel_name) == expected
-
-
-@pytest.mark.parametrize(
     "settings",
     ({}, {TOKEN_PARAM_NAME: 1}),
     ids=("missing", "non-string"),
 )
 def test_token_auth_manager_rejects_missing_or_invalid_token(keyring, settings):
-    """
-    Test to make sure missing and invalid tokens are rejected.
-    """
+    """Missing and invalid tokens raise an auth error."""
     channel = Channel("tester")
 
-    # setup mocks
     keyring(None)
 
-    # run code under test
     with pytest.raises(CondaAuthError, match="Token not found"):
         manager.store(channel, settings)
 
@@ -84,13 +82,10 @@ def test_token_auth_manager_with_token(keyring, channel_name, settings):
     token = settings[TOKEN_PARAM_NAME]
     channel = Channel(channel_name)
 
-    # setup mocks
     keyring(None)
 
-    # run code under test
     manager.store(channel, settings)
 
-    # make assertions
     assert manager._cache == {channel.canonical_name: (USERNAME, token)}
 
 
@@ -122,9 +117,9 @@ def test_token_legacy_migration_uses_auth_target(keyring):
     )
 
 
-def test_basic_auth_manager_remove_existing_secret(keyring):
+def test_token_auth_manager_remove_existing_secret(keyring):
     """
-    Test to make sure that removing a password that exist works.
+    Test to make sure that removing a token that exists works.
     """
     secret = "secret"
     settings = {
@@ -132,77 +127,40 @@ def test_basic_auth_manager_remove_existing_secret(keyring):
     }
     channel = Channel("tester")
 
-    # setup mocks
     keyring_mock, _ = keyring(secret)
 
-    # run code under test
     manager.remove_secret(channel, settings)
 
-    # make assertions
     assert keyring_mock.delete_password_calls == [
         ("conda-auth::credential::tester", "credential"),
         ("conda-auth::token::tester", USERNAME),
     ]
 
 
-def test_basic_auth_manager_remove_non_existing_secret(keyring):
+def test_token_auth_manager_remove_non_existing_secret(keyring):
     """
-    Test make sure that when removing a secret that does not exist, the appropriate
-    exception and message is raised and shown.
+    Test make sure that removing a missing token is best-effort.
     """
     settings = {
         "username": USERNAME,
     }
     channel = Channel("tester")
 
-    # setup mocks
     keyring_mock, _ = keyring(None)
 
-    # make assertions
     manager.remove_secret(channel, settings)
+
     assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
-
-
-def test_token_auth_handler_with_anaconda_dot_org_token(mocker, keyring):
-    """
-    Test to make sure that we can successfully instantiate and call the ``TokenAuthHandler``
-    using the anaconda.org formatted token
-    """
-    channel_name = "channel"
-    token = "token"
-    channel = Channel(channel_name)
-
-    # setup mocks
-    context = mocker.MagicMock()
-    context.channel_settings = [{"channel": channel.canonical_name, "auth": TOKEN_NAME}]
-    mocker.patch.object(manager, "_context", context)
-    keyring_mock, _ = keyring(token)
-
-    auth_handler = TokenAuthHandler(channel_name)
-
-    request = MagicMock()
-    request.headers = {}
-
-    request = auth_handler(request)
-
-    assert request.headers == {"Authorization": f"token {token}"}
-    assert keyring_mock.get_password_calls == [
-        ("conda-auth::credential::channel", "credential"),
-        ("conda-auth::token::channel", USERNAME),
-    ]
-    keyring_mock.set_password.assert_not_called()
 
 
 def test_token_auth_handler_with_bearer_token(mocker, keyring):
     """
-    Test to make sure that we can successfully instantiate and call the ``TokenAuthHandler``
-    using a bearer token.
+    Test to make sure the default token handler uses a bearer header.
     """
     channel_name = "http://localhost"
     token = "token"
     channel = Channel(channel_name)
 
-    # setup mocks
     context = mocker.MagicMock()
     context.channel_settings = [{"channel": channel.canonical_name, "auth": TOKEN_NAME}]
     mocker.patch.object(manager, "_context", context)
@@ -221,6 +179,53 @@ def test_token_auth_handler_with_bearer_token(mocker, keyring):
         ("conda-auth::token::http://localhost", USERNAME),
     ]
     keyring_mock.set_password.assert_not_called()
+
+
+def test_token_auth_handler_sets_custom_token_header(
+    monkeypatch, keyring, context_factory, request_factory
+):
+    """Stored token metadata controls the header name and value template."""
+    channel_name = "channel"
+    token = "token"
+    channel = Channel(channel_name)
+
+    context = context_factory([{"channel": channel.canonical_name, "auth": TOKEN_NAME}])
+    monkeypatch.setattr(manager, "_context", context)
+    keyring(None)
+    store_custom_token_credential(
+        channel.canonical_name,
+        token,
+        token_header="X-Auth",
+        token_template="Token {token}",
+    )
+
+    auth_handler = TokenAuthHandler(channel_name)
+    request = auth_handler(request_factory())
+
+    assert request.headers == {"X-Auth": "Token token"}
+
+
+def test_token_auth_handler_does_not_overwrite_custom_token_header(
+    monkeypatch, keyring, context_factory, request_factory
+):
+    """Existing custom token headers are preserved."""
+    channel_name = "channel"
+    channel = Channel(channel_name)
+
+    context = context_factory([{"channel": channel.canonical_name, "auth": TOKEN_NAME}])
+    monkeypatch.setattr(manager, "_context", context)
+    keyring(None)
+    store_custom_token_credential(
+        channel.canonical_name,
+        "token",
+        token_header="X-Auth",
+        token_template="Token {token}",
+    )
+
+    auth_handler = TokenAuthHandler(channel_name)
+    request = auth_handler(request_factory(headers={"X-Auth": "existing"}))
+
+    assert request.headers == {"X-Auth": "existing"}
 
 
 def test_token_auth_handler_cache_reuses_keyring_secret(mocker, keyring):
@@ -260,8 +265,6 @@ def test_token_auth_handler_rejects_unsupported_transports_before_keyring(
     monkeypatch, keyring, context_factory, channel_name, message
 ):
     """Unsupported transports never receive token credentials."""
-
-    # Transport validation happens before reading the configured keyring token.
     context = context_factory([{"channel": channel_name, "auth": TOKEN_NAME}])
     monkeypatch.setattr(manager, "_context", context)
     keyring_mock, _ = keyring("token")
@@ -280,7 +283,6 @@ def test_token_auth_handler_allows_plaintext_http_when_configured(
     channel_name = "http://example.com/private-channel"
     token = "token"
 
-    # The opt-in is read from channel_settings at request-auth time.
     context = context_factory(
         [{"channel": channel_name, "auth": TOKEN_NAME, "auth_allow_plaintext_http": "True"}]
     )
@@ -335,7 +337,6 @@ def test_token_auth_manager_get_secret_loads_from_channel_settings(keyring):
     channel = "channel"
     token = "token"
 
-    # setup mocks
     context = MagicMock()
     context.channels = (channel,)
     context.channel_settings = [

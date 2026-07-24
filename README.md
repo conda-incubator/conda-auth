@@ -31,6 +31,12 @@ conda auth login https://example.com/my-protected-channel --basic
 conda auth login https://example.com/my-protected-channel --token
 ```
 
+**Log in** to a channel with a custom token header:
+
+```
+conda auth login https://example.com/my-protected-channel --token --header X-Auth --token-template 'Token {token}'
+```
+
 **Log in** to a channel with OAuth 2.0/OIDC:
 
 ```
