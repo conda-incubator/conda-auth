@@ -4,6 +4,7 @@ import argparse
 
 from conda.cli.helpers import add_parser_json
 
+from ..constants import PROXY_COMMAND_NAME
 from ..handlers.token import TOKEN_HEADER_PARAM_NAME, TOKEN_TEMPLATE_PARAM_NAME
 from ..oauth2_client import OAUTH_SCOPE_PARAM_NAME
 
@@ -139,6 +140,36 @@ def configure_parser(parser: argparse.ArgumentParser) -> None:
     )
     status_parser.add_argument("channel", nargs="?")
     add_parser_json(status_parser)
+
+    proxy_parser = subparsers.add_parser(
+        PROXY_COMMAND_NAME,
+        help="Authenticate with configured proxy servers",
+    )
+    proxy_subparsers = proxy_parser.add_subparsers(dest="proxy_command")
+    proxy_login = proxy_subparsers.add_parser("login", help="Log in to a proxy server")
+    proxy_login.add_argument("proxy_key", help="proxy_servers key, for example 'http'")
+    proxy_login.add_argument(
+        "--proxy-url",
+        help="Proxy URL to store in proxy_servers without credentials",
+    )
+    add_basic_options(proxy_login)
+    add_parser_json(proxy_login)
+
+    proxy_logout = proxy_subparsers.add_parser("logout", help="Log out of a proxy server")
+    proxy_logout.add_argument("proxy_key", help="proxy_servers key, for example 'http'")
+    proxy_logout.add_argument(
+        "--proxy-url",
+        help="Proxy URL for the stored credential; defaults to configured proxy_servers",
+    )
+    add_parser_json(proxy_logout)
+
+    proxy_status = proxy_subparsers.add_parser("status", help="Show proxy credentials")
+    proxy_status.add_argument("proxy_key", nargs="?")
+    proxy_status.add_argument(
+        "--proxy-url",
+        help="Proxy URL for the stored credential; defaults to configured proxy_servers",
+    )
+    add_parser_json(proxy_status)
 
 
 def build_parser(prog_name: str = "conda auth") -> argparse.ArgumentParser:

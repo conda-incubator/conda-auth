@@ -136,3 +136,14 @@ def remove_channel_settings(config: ConfigurationFile, channel: str) -> bool:
 
     config.content["channel_settings"] = updated_channel_settings
     return removed_auth_settings
+
+
+def update_proxy_server(config: ConfigurationFile, proxy_key: str, proxy_url: str) -> None:
+    """
+    Update a user proxy_servers entry without storing credentials in condarc.
+    """
+    proxy_servers = config.content.get("proxy_servers", {}) or {}
+    if not isinstance(proxy_servers, Mapping):
+        raise CondaAuthError("Expected 'proxy_servers' to be a mapping")
+
+    config.content["proxy_servers"] = {**proxy_servers, proxy_key: proxy_url}

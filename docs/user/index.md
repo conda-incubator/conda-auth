@@ -12,8 +12,19 @@ conda install -c conda-forge conda-auth
 
 ## Usage
 
-Once installed the plugin makes two new commands available: `conda auth login` and `conda auth logout`. The plugin
-supports various types of authentication schemes. Read below to learn how to use each.
+Once installed the plugin makes authentication commands available under `conda auth`.
+Use the generic commands for channel and proxy endpoints:
+
+```
+conda auth login <target>
+conda auth logout <target>
+conda auth status [target]
+
+conda auth proxy login <proxy-key>
+```
+
+The plugin stores secrets in the operating system keyring. Conda configuration only
+contains non-secret auth metadata such as the auth type and target.
 
 ### Credential verification
 
@@ -23,7 +34,7 @@ Login can optionally verify credentials by probing conda channel metadata paths:
 conda auth login <channel_name> --basic --verify
 ```
 
-Verification is best-effort. Conda-auth prefers the smaller sharded repodata index,
+Verification is best-effort. conda-auth prefers the smaller sharded repodata index,
 then falls back to `repodata.json` and `channeldata.json`. If conda-auth can read
 channel metadata, login succeeds. If the channel returns a clear authentication failure
 such as `401` or `403`, login fails and rolls back the stored credential and auth
@@ -89,6 +100,41 @@ conda auth login <channel_name> --token <token_value> \
 The token template must include `{token}`. The `--token-header` and
 `--header-template` aliases are also accepted.
 
+### Proxy authentication
+
+Proxy credentials are separate from channel credentials. conda-auth can store proxy
+usernames and passwords in keyring while keeping `proxy_servers` entries in condarc
+free of embedded secrets:
+
+```
+conda auth proxy login http \
+  --proxy-url http://proxy.example.com:8080 \
+  --username "$PROXY_USER"
+```
+
+The `http` argument is the `proxy_servers` key conda uses. You can also use conda's
+host-specific key form, such as `https://repo.example.com`. If `proxy_servers` is
+already configured, `--proxy-url` can be omitted and conda-auth will store only the
+credential:
+
+```
+conda auth proxy login http --username "$PROXY_USER"
+```
+
+Before conda network commands run, conda-auth hydrates the in-process proxy URL with
+the stored credential. The password is not written to condarc.
+
+Proxy URLs must use `http://` or `https://` and must not include embedded
+credentials. Proxy credentials are scoped to both the `proxy_servers` key and the
+proxy URL origin. If a proxy URL changes after login, pass the old URL with
+`--proxy-url` when running `conda auth proxy logout` or `conda auth proxy status`.
+
+```{caution}
+Proxy authentication is not channel authentication. Use `conda auth login` for private
+channels and `conda auth proxy login` only for the HTTP proxy between conda and the
+remote service.
+```
+
 ### OAuth 2.0/OIDC authentication
 
 OAuth 2.0 is available for OIDC services that support discovery plus
@@ -109,7 +155,7 @@ Supported OAuth 2.0 modes:
 - `device-code`: headless login for SSH and terminal-only environments
 
 Additional OAuth options include `--oauth-client-secret`, repeatable
-`--oauth-scope`, `--oauth-redirect-uri`, and `--user-agent`. Conda auth refreshes
+`--oauth-scope`, `--oauth-redirect-uri`, and `--user-agent`. conda-auth refreshes
 OAuth 2.0 access tokens before expiry when a refresh token is available, and
 attempts token revocation on logout when the OAuth server advertises a revocation
 endpoint.
@@ -118,11 +164,11 @@ The password grant, implicit flow, and client credentials grant are not supporte
 
 ### Channel transports
 
-Conda auth supports authenticated HTTP(S) channel services. Remote channels must use
+conda-auth supports authenticated HTTP(S) channel services. Remote channels must use
 HTTPS by default, and FTP and file channels are not supported by these auth handlers.
 
 Conda's `s3://` support currently uses boto3's normal AWS credential chain, such as
-environment variables, profiles, and instance credentials. Conda auth does not set
+environment variables, profiles, and instance credentials. conda-auth does not set
 process-wide AWS environment variables. First-class channel-scoped S3 credentials
 need a future conda-side S3 credential hook.
 
@@ -161,9 +207,12 @@ access tokens, or refresh tokens.
 
 ### Storage backend unavailable?
 
-Conda auth relies on the [keyring](https://github.com/jaraco/keyring) package to store its passwords and secrets.
-Because of this, it only supports a limited number of operating systems, mostly desktop operating systems like
-Windows, OSX and several Linux variants.
+conda-auth relies on the [keyring](https://github.com/jaraco/keyring) package to store
+passwords and secrets. Keyring is the only production write backend; conda-auth does
+not add a plaintext auth file backend or implicit `.netrc` fallback.
+
+Because of this, it only supports a limited number of operating systems, mostly
+desktop operating systems like Windows, OSX and several Linux variants.
 
 If you want to use conda-auth, but are not using a supported operating system, you can install the
 [keyring-alt](https://github.com/jaraco/keyrings.alt) package:
@@ -183,4 +232,4 @@ information.
 Have you found a bug you want to let us know about? Please create an issue at our
 [GitHub project](https://github.com/conda-incubator/conda-auth/issues/new/choose).
 
-And thank you for helping us improve conda auth!
+And thank you for helping us improve conda-auth!

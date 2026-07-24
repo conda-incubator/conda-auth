@@ -1,4 +1,4 @@
-# conda auth <i class="fa-solid fa-user-lock" style="color: #828282; font-size: 30px"></i>
+# conda-auth <i class="fa-solid fa-user-lock" style="color: #828282; font-size: 30px"></i>
 
 ```{toctree}
 :maxdepth: 1
@@ -8,7 +8,7 @@ User Guide <user/index>
 Developer Guide <dev/index>
 ```
 
-Conda auth is a conda plugin which adds more secure authentication support to conda.
+conda-auth is a conda plugin which adds more secure authentication support to conda.
 
 Once installed, it provides two new commands you can use to manage credentials and
 access private conda channels:
@@ -18,7 +18,7 @@ access private conda channels:
 
 ## Installation
 
-Conda auth is available on conda-forge. As with all conda plugins, this must be installed
+conda-auth is available on conda-forge. As with all conda plugins, this must be installed
 into your base environment:
 
 ```
@@ -51,7 +51,7 @@ conda auth login https://example.com/my-protected-channel --token
 <h5>OAuth 2.0/OIDC authentication:</h5>
 
 ```
-conda auth login https://example.com/my-protected-channel --oauth2 \
+conda auth login https://repo.example.com/private --oauth2 \
   --oauth-issuer-url https://idp.example.com \
   --oauth-client-id my-client
 ```
@@ -69,7 +69,7 @@ conda auth logout https://example.com/my-protected-channel
 
 <div style="text-align: center">
     <h3 style="margin-top: 0.5em">User Guide</h3>
-    <p>To learn even more about how to use conda auth head over to our user guide</p>
+    <p>To learn even more about how to use conda-auth head over to our user guide</p>
 </div>
 
 ```{button-ref} user/index
@@ -85,7 +85,7 @@ To the user guide
 
 <div style="text-align: center">
     <h3 style="margin-top: 0.5em">Developer Guide</h3>
-    <p>Are you interested in contributing to conda auth? Our contributing guidelines will help you get up and running.</p>
+    <p>Are you interested in contributing to conda-auth? Our contributing guidelines will help you get up and running.</p>
 </div>
 
 ```{button-ref} dev/index
