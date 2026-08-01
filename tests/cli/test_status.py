@@ -254,3 +254,58 @@ def test_oauth_login_uses_explicit_endpoint_options(
     stored = KeyringStorage().get_credential("https://repo.example.com/private")
     assert stored is not None
     assert stored.client_secret == "client-secret"
+
+
+def test_status_finds_credential_when_external_condarc_has_trailing_slash(
+    monkeypatch, runner, keyring, context_factory
+):
+    """
+    Regression test: when auth config is supplied by a package-installed
+    condarc.d file whose ``channel`` value has a trailing slash (e.g.
+    ``https://repo.example.com:8443/``), and login correctly skipped writing
+    ``auth_target`` to the user condarc, ``conda auth status`` must still find
+    the credential.
+
+    The credential is stored under ``channel.canonical_name`` (no trailing
+    slash) via ``with_target(record, channel)``.  The status lookup falls back
+    to ``configured_channel`` when ``auth_target`` is absent.  Without
+    normalisation that raw value carries the trailing slash, producing a keyring
+    key that does not match the stored one.
+    """
+    keyring(None)
+    channel_with_slash = "https://repo.example.com:8443/"
+    channel_canonical = "https://repo.example.com:8443"
+
+    # Simulate the external condarc.d entry — note the trailing slash and no
+    # auth_target (login skipped writing it because config came from elsewhere).
+    monkeypatch.setattr(
+        "conda_auth.cli.status.context",
+        context_factory(
+            [
+                {
+                    "channel": channel_with_slash,
+                    "auth": "oauth2",
+                    "oauth_client_id": "WzUtPJoAaz3HcVPp9IDDlRyX",
+                    "oauth_flow": "device-code",
+                    # deliberately no auth_target — login skipped writing it
+                }
+            ]
+        ),
+    )
+    # Credential is stored under the canonical name (no trailing slash).
+    KeyringStorage().set_credential(
+        CredentialRecord(
+            target=channel_canonical,
+            auth_type="oauth2",
+            username="oauth2",
+            access_token="access-token",
+        )
+    )
+
+    result = runner.invoke(auth, ["status", "--json"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["success"] is True
+    assert len(data["credentials"]) == 1
+    assert data["credentials"][0]["target"] == channel_canonical

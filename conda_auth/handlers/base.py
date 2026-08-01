@@ -313,11 +313,23 @@ class AuthManager(ABC):
         """
         Match configured channel names the same way conda selects auth handlers.
         """
+        # Normalise away a trailing slash before any comparison — conda's
+        # Channel model strips it from canonical_name/base_url, but the raw
+        # string from a condarc file may still carry one (e.g. a recipe that
+        # writes "https://repo.example.com:8443/").
+        configured_channel = configured_channel.rstrip("/")
+
         if configured_channel == channel.canonical_name:
             return True
 
         parsed_channel = conda_urlparse(channel.base_url)
-        parsed_setting = conda_urlparse(configured_channel)
+        try:
+            parsed_setting = conda_urlparse(configured_channel)
+        except ValueError:
+            # conda_urlparse raises ValueError for non-integer port values such
+            # as the '*' wildcard in glob patterns (e.g. https://host:*).
+            # Fall back to a simple fnmatch on the full URL string.
+            return fnmatch(channel.base_url.rstrip("/"), configured_channel)
         if parsed_setting.scheme != parsed_channel.scheme:
             return False
 

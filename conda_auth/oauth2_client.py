@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import requests
 from conda.models.channel import Channel
+from conda.gateways.connection.session import get_session
 from requests.auth import HTTPBasicAuth
 
 from .credentials import CredentialRecord
@@ -36,6 +37,9 @@ OAUTH_USER_AGENT_PARAM_NAME = "user_agent"
 
 OAUTH_EXPIRY_SKEW_SECONDS = 300
 OAUTH_CALLBACK_TIMEOUT_SECONDS = 300
+
+# Passing an empty string returns a CondaSession() object
+session = get_session("")
 
 
 @dataclass(frozen=True)
@@ -202,7 +206,7 @@ class OAuthClient:
         """Fetch the issuer's OIDC discovery document."""
 
         issuer_url = config.issuer_url.rstrip("/")
-        response = requests.get(
+        response = session.get(
             f"{issuer_url}/.well-known/openid-configuration",
             headers=OAuthClient.headers(config.user_agent),
             timeout=30,
@@ -290,7 +294,7 @@ class OAuthClient:
             raise CondaAuthError("OAuth server does not support device-code flow")
 
         token_endpoint = self.metadata.require("token_endpoint")
-        response = requests.post(
+        response = session.post(
             device_endpoint,
             data={
                 "client_id": self.config.client_id,
@@ -325,7 +329,7 @@ class OAuthClient:
 
         while time.time() < deadline:
             time.sleep(interval)
-            token_response = requests.post(
+            token_response = session.post(
                 token_endpoint,
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -381,7 +385,7 @@ class OAuthClient:
         else:
             auth = HTTPBasicAuth(record.client_id, record.client_secret)
 
-        response = requests.post(
+        response = session.post(
             record.token_endpoint,
             data=data,
             auth=auth,
@@ -435,7 +439,7 @@ class OAuthClient:
             auth = HTTPBasicAuth(client_id, record.client_secret)
 
         try:
-            requests.post(
+            session.post(
                 record.revocation_endpoint,
                 data=data,
                 auth=auth,

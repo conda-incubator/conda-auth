@@ -148,3 +148,46 @@ def test_auth_manager_default_legacy_credential_behavior():
 
     assert auth_manager.migrate_legacy_credential_record(channel, None, "tester") is None
     assert auth_manager.legacy_credential_targets(channel, "shared") == ("shared", "tester")
+
+
+@pytest.mark.parametrize(
+    ("configured_channel", "channel_url", "expected"),
+    (
+        # Exact match — no slash in either.
+        ("https://repo.example.com:8443", "https://repo.example.com:8443", True),
+        # Trailing slash in configured channel only — must still match.
+        ("https://repo.example.com:8443/", "https://repo.example.com:8443", True),
+        # Trailing slash in both — must match (Channel strips it from canonical_name).
+        ("https://repo.example.com:8443/", "https://repo.example.com:8443/", True),
+        # Path channel — exact match.
+        ("https://repo.example.com/conda", "https://repo.example.com/conda", True),
+        # Trailing slash on path channel — must still match.
+        ("https://repo.example.com/conda/", "https://repo.example.com/conda", True),
+        # Wildcard port glob — must match.
+        ("https://repo.example.com:*", "https://repo.example.com:8443", True),
+        # Different host — must not match.
+        ("https://other.example.com", "https://repo.example.com", False),
+        # Different scheme — must not match.
+        ("http://repo.example.com:8443", "https://repo.example.com:8443", False),
+    ),
+    ids=(
+        "exact",
+        "trailing-slash-configured",
+        "trailing-slash-both",
+        "path-exact",
+        "path-trailing-slash",
+        "wildcard-port",
+        "different-host",
+        "different-scheme",
+    ),
+)
+def test_channel_matches_trailing_slash_and_patterns(configured_channel, channel_url, expected):
+    """
+    channel_matches() must normalise trailing slashes in the configured channel
+    string so that a recipe-installed condarc entry like
+    ``channel: https://repo.example.com:8443/`` still matches runtime requests
+    to ``https://repo.example.com:8443``.
+    """
+    manager = StubAuthManager()
+    channel = Channel(channel_url)
+    assert manager.channel_matches(configured_channel, channel) is expected

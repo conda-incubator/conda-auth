@@ -53,7 +53,10 @@ def get_status_targets(target: str | None = None) -> tuple[str, ...]:
 
         auth_target = settings.get("auth_target")
         if not isinstance(auth_target, str):
-            auth_target = configured_channel
+            # Normalise to canonical form (strips trailing slash, etc.) so the
+            # keyring lookup key matches what was stored at login time via
+            # with_target(record, channel) — which uses channel.canonical_name.
+            auth_target = Channel(configured_channel).canonical_name
 
         if requested_channel is None:
             add(auth_target)
@@ -89,6 +92,9 @@ def channel_matches(configured_channel: str, channel: Channel) -> bool:
     """
     Match configured channel names the same way conda selects auth handlers.
     """
+    # Normalize away a trailing slash before any comparison.
+    configured_channel = configured_channel.rstrip("/")
+
     if configured_channel == channel.canonical_name:
         return True
 
