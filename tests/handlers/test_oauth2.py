@@ -67,7 +67,7 @@ def test_oauth_handler_refreshes_expired_access_token(
         assert auth is None
         return FakeResponse({"access_token": "new-access-token", "expires_in": 3600})
 
-    monkeypatch.setattr("conda_auth.oauth2_client.requests.post", post)
+    monkeypatch.setattr("conda_auth.oauth2_client.session.post", post)
 
     request = request_factory()
     handler = OAuth2AuthHandler(target)

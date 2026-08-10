@@ -242,7 +242,7 @@ def test_discover_oauth_metadata(monkeypatch, body, expected_error):
         calls.append((url, headers, timeout))
         return response
 
-    monkeypatch.setattr(oauth2_client.requests, "get", get)
+    monkeypatch.setattr(oauth2_client.session, "get", get)
     config = OAuthLoginConfig(
         "https://idp.example.com/",
         "client",
@@ -430,7 +430,7 @@ def test_device_code_flow_polls_until_authorized(monkeypatch):
         calls.append((url, data, headers, timeout))
         return responses.pop(0)
 
-    monkeypatch.setattr(oauth2_client.requests, "post", post)
+    monkeypatch.setattr(oauth2_client.session, "post", post)
     monkeypatch.setattr(oauth2_client.time, "time", lambda: 100)
     monkeypatch.setattr(oauth2_client.time, "sleep", sleeps.append)
     config = OAuthLoginConfig(
@@ -510,7 +510,7 @@ def test_device_code_flow_rejects_invalid_responses(
 ):
     if device_data is not None:
         monkeypatch.setattr(
-            oauth2_client.requests,
+            oauth2_client.session,
             "post",
             lambda url, data, headers, timeout: FakeResponse(device_data),
         )
@@ -534,7 +534,7 @@ def test_device_code_flow_reports_provider_error(monkeypatch):
         FakeResponse({}, status_code=400, text="provider failure"),
     ]
     monkeypatch.setattr(
-        oauth2_client.requests,
+        oauth2_client.session,
         "post",
         lambda url, data, headers, timeout: responses.pop(0),
     )
@@ -582,7 +582,7 @@ def test_refresh_record_skips_ineligible_credentials(monkeypatch, record):
         raise AssertionError("unexpected refresh request")
 
     monkeypatch.setattr(oauth2_client.time, "time", lambda: 1_000)
-    monkeypatch.setattr(oauth2_client.requests, "post", unexpected_post)
+    monkeypatch.setattr(oauth2_client.session, "post", unexpected_post)
 
     assert refresh_oauth_record(record) is record
 
@@ -617,7 +617,7 @@ def test_refresh_record_updates_tokens(
         calls.append((url, data, auth, headers, timeout))
         return response
 
-    monkeypatch.setattr(oauth2_client.requests, "post", post)
+    monkeypatch.setattr(oauth2_client.session, "post", post)
     monkeypatch.setattr(oauth2_client.time, "time", lambda: 1_000)
     record = CredentialRecord(
         target="target",
@@ -664,7 +664,7 @@ def test_refresh_record_keeps_credentials_after_http_failure(monkeypatch):
         client_id="client",
     )
     monkeypatch.setattr(
-        oauth2_client.requests,
+        oauth2_client.session,
         "post",
         lambda *args, **kwargs: FakeResponse({}, status_code=401),
     )
@@ -694,7 +694,7 @@ def test_revoke_record_skips_ineligible_credentials(monkeypatch, record):
     def unexpected_post(*args, **kwargs):
         raise AssertionError("unexpected revocation request")
 
-    monkeypatch.setattr(oauth2_client.requests, "post", unexpected_post)
+    monkeypatch.setattr(oauth2_client.session, "post", unexpected_post)
 
     revoke_oauth_record(record)
 
@@ -707,7 +707,7 @@ def test_revoke_record_uses_refresh_token_and_client_auth(monkeypatch, client_se
         calls.append((url, data, auth, headers, timeout))
         return FakeResponse({})
 
-    monkeypatch.setattr(oauth2_client.requests, "post", post)
+    monkeypatch.setattr(oauth2_client.session, "post", post)
     record = CredentialRecord(
         target="target",
         auth_type="oauth2",
@@ -736,7 +736,7 @@ def test_revoke_record_ignores_network_failure(monkeypatch):
     def post(*args, **kwargs):
         raise requests.ConnectionError("offline")
 
-    monkeypatch.setattr(oauth2_client.requests, "post", post)
+    monkeypatch.setattr(oauth2_client.session, "post", post)
     record = CredentialRecord(
         target="target",
         auth_type="oauth2",
