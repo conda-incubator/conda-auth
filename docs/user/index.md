@@ -74,9 +74,9 @@ overwrite an existing `Authorization` header.
 OAuth 2.0 is available for OIDC services that support discovery plus
 authorization-code or device-code login flows.
 
-When a resource handler distributes their OAuth2 configuration as a conda
-package (see [Creating an OAuth2 auth recipe](oauth2-recipe-tutorial.md)),
-no additional flags are needed — just install the package and log in:
+When a channel operator distributes its OAuth 2.0 configuration as a conda
+package (see [Creating an OAuth 2.0 auth recipe](oauth2-recipe-tutorial.md)),
+no additional flags are needed. Install the package and log in:
 
 ```
 conda install resource-handler-auth
@@ -85,7 +85,7 @@ conda auth login https://repo.example.com
 
 #### Manual configuration
 
-If your resource handler does not provide a configuration package, you can
+If your channel operator does not provide a configuration package, you can
 supply the OAuth2 parameters directly on the command line:
 
 ```
@@ -96,7 +96,7 @@ conda auth login https://repo.example.com --oauth2 \
 ```
 
 The `--oauth2`, `--basic`, and `--token` flags are optional when the auth
-type is already configured in `channel_settings` in your condarc.  If a
+type is already configured in `channel_settings` in your condarc. If a
 matching entry exists, the login command infers the auth type automatically.
 
 Supported OAuth 2.0 modes:
@@ -116,11 +116,6 @@ When supplied, the OAuth client secret is stored only in the credential record i
 the system keyring. It is not written to `channel_settings` in the condarc.
 
 The password grant, implicit flow, and client credentials grant are not supported.
-
-```{note}
-If you are already logged in to a channel, `conda auth login` will exit with an
-error.  Run `conda auth logout <channel>` first before logging in again.
-```
 
 ### Channel transports
 

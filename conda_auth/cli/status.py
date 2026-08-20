@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
-from fnmatch import fnmatch
 
 from conda.base.context import context
 from conda.common.serialize import json
-from conda.common.url import urlparse as conda_urlparse
 from conda.models.channel import Channel
 
+from ..handlers.base import channel_matches
 from ..storage import storage
 
 
@@ -53,10 +52,11 @@ def get_status_targets(target: str | None = None) -> tuple[str, ...]:
 
         auth_target = settings.get("auth_target")
         if not isinstance(auth_target, str):
-            # Normalise to canonical form (strips trailing slash, etc.) so the
-            # keyring lookup key matches what was stored at login time via
-            # with_target(record, channel) — which uses channel.canonical_name.
-            auth_target = Channel(configured_channel).canonical_name
+            # Match the canonical key used when the credential was stored.
+            try:
+                auth_target = Channel(configured_channel).canonical_name
+            except ValueError:
+                continue
 
         if requested_channel is None:
             add(auth_target)
@@ -86,26 +86,6 @@ def status_setting_matches_target(
         or channel_matches(configured_channel, requested_channel)
         or channel_matches(auth_target, requested_channel)
     )
-
-
-def channel_matches(configured_channel: str, channel: Channel) -> bool:
-    """
-    Match configured channel names the same way conda selects auth handlers.
-    """
-    # Normalize away a trailing slash before any comparison.
-    configured_channel = configured_channel.rstrip("/")
-
-    if configured_channel == channel.canonical_name:
-        return True
-
-    parsed_channel = conda_urlparse(channel.base_url)
-    parsed_setting = conda_urlparse(configured_channel)
-    if parsed_setting.scheme != parsed_channel.scheme:
-        return False
-
-    channel_url = parsed_channel.netloc + parsed_channel.path
-    pattern = parsed_setting.netloc + parsed_setting.path
-    return fnmatch(channel_url, pattern)
 
 
 def status(target: str | None = None) -> list[dict[str, object]]:

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from fnmatch import fnmatch
 from ipaddress import ip_address
-from urllib.parse import urlparse
+from typing import cast
+from urllib.parse import urlparse, urlsplit
 
 import conda.base.context
 from conda.auxlib.type_coercion import TypeCoercionError, boolify
 from conda.base.context import context as global_context
-from conda.common.url import urlparse as conda_urlparse
 from conda.models.channel import Channel
 
 from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
@@ -98,6 +98,56 @@ def validate_secure_channel(
             "Refusing to use credentials with unsupported channel scheme "
             f"{parsed_url.scheme!r} for {url!r}. Use HTTPS or localhost."
         )
+
+
+def channel_matches(configured_channel: str, channel: Channel) -> bool:
+    """Return whether a channel setting applies to a channel."""
+    configured_channel = configured_channel.rstrip("/")
+    try:
+        if Channel(configured_channel).canonical_name == channel.canonical_name:
+            return True
+    except ValueError:
+        pass
+
+    if not isinstance(channel.base_url, str):
+        return False
+
+    try:
+        parsed_channel = urlsplit(channel.base_url)
+        parsed_setting = urlsplit(configured_channel)
+    except ValueError:
+        return False
+    if not parsed_setting.scheme or parsed_setting.scheme != parsed_channel.scheme:
+        return False
+
+    channel_url = parsed_channel.netloc + parsed_channel.path
+    pattern = parsed_setting.netloc + parsed_setting.path
+    return fnmatch(channel_url, pattern)
+
+
+def find_channel_settings(
+    channel_settings: Iterable[object],
+    channel: Channel,
+    *,
+    auth_type: str | None = None,
+) -> Mapping[str, object] | None:
+    """Return the last channel setting that applies to a channel."""
+    matched_settings: Mapping[str, object] | None = None
+    for settings in channel_settings:
+        if not isinstance(settings, Mapping):
+            continue
+        typed_settings = cast(Mapping[str, object], settings)
+        if auth_type is not None:
+            configured_auth = typed_settings.get("auth")
+            if (
+                not isinstance(configured_auth, str)
+                or configured_auth.strip().lower() != auth_type
+            ):
+                continue
+        configured_channel = typed_settings.get("channel")
+        if isinstance(configured_channel, str) and channel_matches(configured_channel, channel):
+            matched_settings = typed_settings
+    return matched_settings
 
 
 class AuthManager(ABC):
@@ -297,45 +347,17 @@ class AuthManager(ABC):
         """
         Find the auth settings that apply to a channel.
         """
-        matched_settings = None
-        for settings in self._context.channel_settings:
-            if settings.get("auth") != self.get_auth_type():
-                continue
-            if configured_channel := settings.get("channel"):
-                if not isinstance(configured_channel, str):
-                    continue
-                if self.channel_matches(configured_channel, channel):
-                    matched_settings = settings
-
-        return matched_settings
+        return find_channel_settings(
+            self._context.channel_settings,
+            channel,
+            auth_type=self.get_auth_type(),
+        )
 
     def channel_matches(self, configured_channel: str, channel: Channel) -> bool:
         """
         Match configured channel names the same way conda selects auth handlers.
         """
-        # Normalise away a trailing slash before any comparison — conda's
-        # Channel model strips it from canonical_name/base_url, but the raw
-        # string from a condarc file may still carry one (e.g. a recipe that
-        # writes "https://repo.example.com:8443/").
-        configured_channel = configured_channel.rstrip("/")
-
-        if configured_channel == channel.canonical_name:
-            return True
-
-        parsed_channel = conda_urlparse(channel.base_url)
-        try:
-            parsed_setting = conda_urlparse(configured_channel)
-        except ValueError:
-            # conda_urlparse raises ValueError for non-integer port values such
-            # as the '*' wildcard in glob patterns (e.g. https://host:*).
-            # Fall back to a simple fnmatch on the full URL string.
-            return fnmatch(channel.base_url.rstrip("/"), configured_channel)
-        if parsed_setting.scheme != parsed_channel.scheme:
-            return False
-
-        channel_url = parsed_channel.netloc + parsed_channel.path
-        pattern = parsed_setting.netloc + parsed_setting.path
-        return fnmatch(channel_url, pattern)
+        return channel_matches(configured_channel, channel)
 
     def cache_clear(self, channel_name: str | None = None) -> None:
         """

@@ -28,23 +28,6 @@ def ensure_url_scheme(target: str) -> str:
     return f"https://{target}"
 
 
-def _get_param(
-    options: Mapping[str, object],
-    channel_settings: Mapping[str, object] | None,
-    key: str,
-) -> object | None:
-    """
-    Return the value for *key* by checking *options* first, then falling back
-    to *channel_settings*.  An empty list (the argparse ``append`` default) is
-    treated as "not provided" so that ``channel_settings`` can supply scopes.
-    """
-    val = options.get(key)
-    if val is None or val == []:
-        if channel_settings is not None:
-            val = channel_settings.get(key)
-    return val
-
-
 def build_oauth_login_config(
     channel: Channel,
     options: Mapping[str, object],
@@ -54,9 +37,14 @@ def build_oauth_login_config(
     Build an OAuth login configuration from parsed CLI options, falling back
     to *channel_settings* for any option not supplied on the command line.
     """
-    issuer_url = _get_param(options, channel_settings, OAUTH_ISSUER_URL_PARAM_NAME)
-    client_id = _get_param(options, channel_settings, OAUTH_CLIENT_ID_PARAM_NAME)
-    scopes = scopes_from_value(_get_param(options, channel_settings, OAUTH_SCOPE_PARAM_NAME))
+    configured_options = dict(channel_settings or {})
+    configured_options.update(
+        {key: value for key, value in options.items() if value is not None and value != []}
+    )
+
+    issuer_url = configured_options.get(OAUTH_ISSUER_URL_PARAM_NAME)
+    client_id = configured_options.get(OAUTH_CLIENT_ID_PARAM_NAME)
+    scopes = scopes_from_value(configured_options.get(OAUTH_SCOPE_PARAM_NAME))
 
     if issuer_url is None:
         issuer_url = channel.base_url
@@ -69,19 +57,19 @@ def build_oauth_login_config(
             " for this channel, or pass --oauth-client-id."
         )
 
-    flow = _get_param(options, channel_settings, OAUTH_FLOW_PARAM_NAME) or "auto"
+    flow = configured_options.get(OAUTH_FLOW_PARAM_NAME) or "auto"
     if not isinstance(flow, str):
         raise CondaAuthError("OAuth flow must be text")
 
-    client_secret = _get_param(options, channel_settings, OAUTH_CLIENT_SECRET_PARAM_NAME)
+    client_secret = options.get(OAUTH_CLIENT_SECRET_PARAM_NAME)
     if client_secret is not None and not isinstance(client_secret, str):
         raise CondaAuthError("OAuth client secret must be text")
 
-    redirect_uri = _get_param(options, channel_settings, OAUTH_REDIRECT_URI_PARAM_NAME)
+    redirect_uri = configured_options.get(OAUTH_REDIRECT_URI_PARAM_NAME)
     if redirect_uri is not None and not isinstance(redirect_uri, str):
         raise CondaAuthError("OAuth redirect URI must be text")
 
-    user_agent = _get_param(options, channel_settings, OAUTH_USER_AGENT_PARAM_NAME)
+    user_agent = configured_options.get(OAUTH_USER_AGENT_PARAM_NAME)
     if user_agent is not None and not isinstance(user_agent, str):
         raise CondaAuthError("OAuth user agent must be text")
 

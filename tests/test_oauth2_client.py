@@ -72,6 +72,23 @@ class CallbackStateWithoutResponse:
     completed: CompletedEvent = field(default_factory=CompletedEvent)
 
 
+class RequestsSession:
+    """Delegate test HTTP calls to the monkeypatchable requests module."""
+
+    def get(self, *args, **kwargs):
+        return oauth2_client.requests.get(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return oauth2_client.requests.post(*args, **kwargs)
+
+
+@pytest.fixture(autouse=True)
+def conda_session(monkeypatch):
+    session = RequestsSession()
+    monkeypatch.setattr(oauth2_client, "get_session", lambda url: session)
+    return session
+
+
 def test_oauth_metadata_normalizes_and_requires_endpoints():
     metadata = OAuthMetadata.from_mapping(
         {
@@ -242,7 +259,7 @@ def test_discover_oauth_metadata(monkeypatch, body, expected_error):
         calls.append((url, headers, timeout))
         return response
 
-    monkeypatch.setattr(oauth2_client.session, "get", get)
+    monkeypatch.setattr(oauth2_client.requests, "get", get)
     config = OAuthLoginConfig(
         "https://idp.example.com/",
         "client",
@@ -337,7 +354,7 @@ def test_oauth_client_login_rejects_invalid_results(monkeypatch, flow, tokens, m
 
 
 @pytest.mark.parametrize("client_secret", (None, "secret"), ids=("public", "confidential"))
-def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
+def test_authorization_code_flow_uses_pkce(monkeypatch, conda_session, client_secret):
     calls = []
 
     class FakeCallback:
@@ -350,8 +367,8 @@ def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
             return f"{self.redirect_uri}?code=code&state={state}"
 
     class FakeOAuth2Session:
-        def __init__(self, client_id, secret, scope, redirect_uri):
-            calls.append(("session", client_id, secret, scope, redirect_uri))
+        def __init__(self, session, client_id, client_secret, scope, redirect_uri):
+            calls.append(("session", session, client_id, client_secret, scope, redirect_uri))
 
         def create_authorization_url(self, url, **kwargs):
             calls.append(("authorize", url, kwargs))
@@ -368,7 +385,8 @@ def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
         classmethod(lambda cls: PKCEChallenge("verifier", "challenge")),
     )
     monkeypatch.setattr(
-        "authlib.integrations.requests_client.OAuth2Session",
+        oauth2_client,
+        "CondaOAuth2Client",
         FakeOAuth2Session,
     )
     config = OAuthLoginConfig(
@@ -394,6 +412,7 @@ def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
     )
     assert (
         "session",
+        conda_session,
         "client",
         client_secret,
         "openid offline_access",
@@ -430,7 +449,7 @@ def test_device_code_flow_polls_until_authorized(monkeypatch):
         calls.append((url, data, headers, timeout))
         return responses.pop(0)
 
-    monkeypatch.setattr(oauth2_client.session, "post", post)
+    monkeypatch.setattr(oauth2_client.requests, "post", post)
     monkeypatch.setattr(oauth2_client.time, "time", lambda: 100)
     monkeypatch.setattr(oauth2_client.time, "sleep", sleeps.append)
     config = OAuthLoginConfig(
@@ -510,7 +529,7 @@ def test_device_code_flow_rejects_invalid_responses(
 ):
     if device_data is not None:
         monkeypatch.setattr(
-            oauth2_client.session,
+            oauth2_client.requests,
             "post",
             lambda url, data, headers, timeout: FakeResponse(device_data),
         )
@@ -534,7 +553,7 @@ def test_device_code_flow_reports_provider_error(monkeypatch):
         FakeResponse({}, status_code=400, text="provider failure"),
     ]
     monkeypatch.setattr(
-        oauth2_client.session,
+        oauth2_client.requests,
         "post",
         lambda url, data, headers, timeout: responses.pop(0),
     )
@@ -582,7 +601,7 @@ def test_refresh_record_skips_ineligible_credentials(monkeypatch, record):
         raise AssertionError("unexpected refresh request")
 
     monkeypatch.setattr(oauth2_client.time, "time", lambda: 1_000)
-    monkeypatch.setattr(oauth2_client.session, "post", unexpected_post)
+    monkeypatch.setattr(oauth2_client.requests, "post", unexpected_post)
 
     assert refresh_oauth_record(record) is record
 
@@ -617,7 +636,7 @@ def test_refresh_record_updates_tokens(
         calls.append((url, data, auth, headers, timeout))
         return response
 
-    monkeypatch.setattr(oauth2_client.session, "post", post)
+    monkeypatch.setattr(oauth2_client.requests, "post", post)
     monkeypatch.setattr(oauth2_client.time, "time", lambda: 1_000)
     record = CredentialRecord(
         target="target",
@@ -664,7 +683,7 @@ def test_refresh_record_keeps_credentials_after_http_failure(monkeypatch):
         client_id="client",
     )
     monkeypatch.setattr(
-        oauth2_client.session,
+        oauth2_client.requests,
         "post",
         lambda *args, **kwargs: FakeResponse({}, status_code=401),
     )
@@ -694,7 +713,7 @@ def test_revoke_record_skips_ineligible_credentials(monkeypatch, record):
     def unexpected_post(*args, **kwargs):
         raise AssertionError("unexpected revocation request")
 
-    monkeypatch.setattr(oauth2_client.session, "post", unexpected_post)
+    monkeypatch.setattr(oauth2_client.requests, "post", unexpected_post)
 
     revoke_oauth_record(record)
 
@@ -707,7 +726,7 @@ def test_revoke_record_uses_refresh_token_and_client_auth(monkeypatch, client_se
         calls.append((url, data, auth, headers, timeout))
         return FakeResponse({})
 
-    monkeypatch.setattr(oauth2_client.session, "post", post)
+    monkeypatch.setattr(oauth2_client.requests, "post", post)
     record = CredentialRecord(
         target="target",
         auth_type="oauth2",
@@ -736,7 +755,7 @@ def test_revoke_record_ignores_network_failure(monkeypatch):
     def post(*args, **kwargs):
         raise requests.ConnectionError("offline")
 
-    monkeypatch.setattr(oauth2_client.session, "post", post)
+    monkeypatch.setattr(oauth2_client.requests, "post", post)
     record = CredentialRecord(
         target="target",
         auth_type="oauth2",
