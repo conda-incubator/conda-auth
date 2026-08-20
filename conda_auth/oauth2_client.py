@@ -18,6 +18,9 @@ from typing import TextIO
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import requests
+from authlib.integrations.requests_client import OAuth2Session as AuthlibOAuth2Session
+from authlib.oauth2.client import OAuth2Client as AuthlibOAuth2Client
+from conda.gateways.connection.session import get_session
 from conda.models.channel import Channel
 from requests.auth import HTTPBasicAuth
 
@@ -36,6 +39,15 @@ OAUTH_USER_AGENT_PARAM_NAME = "user_agent"
 
 OAUTH_EXPIRY_SKEW_SECONDS = 300
 OAUTH_CALLBACK_TIMEOUT_SECONDS = 300
+
+
+class CondaOAuth2Client(AuthlibOAuth2Client):
+    """Use Authlib's OAuth 2.0 client with conda's configured HTTP session."""
+
+    client_auth_class = AuthlibOAuth2Session.client_auth_class
+    token_auth_class = AuthlibOAuth2Session.token_auth_class
+    oauth_error_class = AuthlibOAuth2Session.oauth_error_class
+    SESSION_REQUEST_PARAMS = AuthlibOAuth2Session.SESSION_REQUEST_PARAMS
 
 
 @dataclass(frozen=True)
@@ -202,7 +214,7 @@ class OAuthClient:
         """Fetch the issuer's OIDC discovery document."""
 
         issuer_url = config.issuer_url.rstrip("/")
-        response = requests.get(
+        response = get_session("").get(
             f"{issuer_url}/.well-known/openid-configuration",
             headers=OAuthClient.headers(config.user_agent),
             timeout=30,
@@ -249,14 +261,13 @@ class OAuthClient:
     def authorization_code_flow(self) -> OAuthTokens:
         """Run the authorization-code flow with PKCE."""
 
-        from authlib.integrations.requests_client import OAuth2Session
-
         token_endpoint = self.metadata.require("token_endpoint")
         callback = OAuthCallbackServer(self.config.redirect_uri, self.config.output_stream)
         pkce = PKCEChallenge.create()
-        client = OAuth2Session(
-            self.config.client_id,
-            self.config.client_secret,
+        client = CondaOAuth2Client(
+            get_session(""),
+            client_id=self.config.client_id,
+            client_secret=self.config.client_secret,
             scope=" ".join(self.config.scopes),
             redirect_uri=callback.redirect_uri,
         )
@@ -290,7 +301,7 @@ class OAuthClient:
             raise CondaAuthError("OAuth server does not support device-code flow")
 
         token_endpoint = self.metadata.require("token_endpoint")
-        response = requests.post(
+        response = get_session("").post(
             device_endpoint,
             data={
                 "client_id": self.config.client_id,
@@ -325,7 +336,7 @@ class OAuthClient:
 
         while time.time() < deadline:
             time.sleep(interval)
-            token_response = requests.post(
+            token_response = get_session("").post(
                 token_endpoint,
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -381,7 +392,7 @@ class OAuthClient:
         else:
             auth = HTTPBasicAuth(record.client_id, record.client_secret)
 
-        response = requests.post(
+        response = get_session("").post(
             record.token_endpoint,
             data=data,
             auth=auth,
@@ -435,7 +446,7 @@ class OAuthClient:
             auth = HTTPBasicAuth(client_id, record.client_secret)
 
         try:
-            requests.post(
+            get_session("").post(
                 record.revocation_endpoint,
                 data=data,
                 auth=auth,
@@ -528,10 +539,11 @@ def revoke_oauth_record(record: CredentialRecord, user_agent: str | None = None)
     OAuthClient.revoke_record(record, user_agent=user_agent)
 
 
-def with_target(record: CredentialRecord, channel: Channel) -> CredentialRecord:
-    """Return a credential record scoped to a channel."""
+def with_target(record: CredentialRecord, target: Channel | str) -> CredentialRecord:
+    """Return a credential record scoped to a channel or configured target."""
 
-    return replace(record, target=channel.canonical_name)
+    credential_target = target if isinstance(target, str) else target.canonical_name
+    return replace(record, target=credential_target)
 
 
 def validate_oauth_endpoint_url(url: str, label: str) -> None:

@@ -72,6 +72,23 @@ class CallbackStateWithoutResponse:
     completed: CompletedEvent = field(default_factory=CompletedEvent)
 
 
+class RequestsSession:
+    """Delegate test HTTP calls to the monkeypatchable requests module."""
+
+    def get(self, *args, **kwargs):
+        return oauth2_client.requests.get(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return oauth2_client.requests.post(*args, **kwargs)
+
+
+@pytest.fixture(autouse=True)
+def conda_session(monkeypatch):
+    session = RequestsSession()
+    monkeypatch.setattr(oauth2_client, "get_session", lambda url: session)
+    return session
+
+
 def test_oauth_metadata_normalizes_and_requires_endpoints():
     metadata = OAuthMetadata.from_mapping(
         {
@@ -337,7 +354,7 @@ def test_oauth_client_login_rejects_invalid_results(monkeypatch, flow, tokens, m
 
 
 @pytest.mark.parametrize("client_secret", (None, "secret"), ids=("public", "confidential"))
-def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
+def test_authorization_code_flow_uses_pkce(monkeypatch, conda_session, client_secret):
     calls = []
 
     class FakeCallback:
@@ -350,8 +367,8 @@ def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
             return f"{self.redirect_uri}?code=code&state={state}"
 
     class FakeOAuth2Session:
-        def __init__(self, client_id, secret, scope, redirect_uri):
-            calls.append(("session", client_id, secret, scope, redirect_uri))
+        def __init__(self, session, client_id, client_secret, scope, redirect_uri):
+            calls.append(("session", session, client_id, client_secret, scope, redirect_uri))
 
         def create_authorization_url(self, url, **kwargs):
             calls.append(("authorize", url, kwargs))
@@ -368,7 +385,8 @@ def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
         classmethod(lambda cls: PKCEChallenge("verifier", "challenge")),
     )
     monkeypatch.setattr(
-        "authlib.integrations.requests_client.OAuth2Session",
+        oauth2_client,
+        "CondaOAuth2Client",
         FakeOAuth2Session,
     )
     config = OAuthLoginConfig(
@@ -394,6 +412,7 @@ def test_authorization_code_flow_uses_pkce(monkeypatch, client_secret):
     )
     assert (
         "session",
+        conda_session,
         "client",
         client_secret,
         "openid offline_access",

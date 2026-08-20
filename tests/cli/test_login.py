@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 from conda.exceptions import CondaError
@@ -213,6 +214,44 @@ def test_login_error_when_updating_condarc_does_not_store_secret(runner, keyring
     keyring_mock.set_password.assert_not_called()
 
 
+def test_login_requires_user_channel_settings_list(runner, keyring, condarc):
+    keyring_mock, _ = keyring(None)
+    condarc.content = {"channel_settings": "invalid"}
+
+    result = runner.invoke(
+        auth,
+        ["login", "tester", "--basic", "--username", "user", "--password", "password"],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type is CondaAuthError
+    assert exception.message == "Expected 'channel_settings' to be a list"
+    keyring_mock.set_password.assert_not_called()
+
+
+def test_login_reports_user_condarc_read_error(monkeypatch, runner, keyring):
+    class UnreadableConfig:
+        @property
+        def content(self):
+            raise OSError("Could not read file")
+
+    keyring_mock, _ = keyring(None)
+    monkeypatch.setattr(
+        "conda_auth.cli.ConfigurationFile.from_user_condarc",
+        lambda: UnreadableConfig(),
+    )
+
+    result = runner.invoke(
+        auth,
+        ["login", "tester", "--basic", "--username", "user", "--password", "password"],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert exc_type is CondaAuthError
+    assert exception.message == "Could not read file"
+    keyring_mock.set_password.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("rollback_error", "message"),
     (
@@ -246,7 +285,7 @@ def test_login_error_when_storing_secret_reports_rollback(
 
     assert exc_type is CondaAuthError
     assert exception.message == message
-    assert condarc.content == {"channel_settings": []}
+    assert condarc.content == {}
     if rollback_error is not None:
         assert exception.__cause__ is keyring_mock.set_password.side_effect
 
@@ -257,7 +296,16 @@ def test_login_error_when_storing_secret_preserves_non_auth_settings(runner, key
     # Rolling back auth settings must not remove other channel-scoped conda settings.
     keyring_mock, _ = keyring(None)
     keyring_mock.set_password.side_effect = CondaAuthError("Could not save secret")
-    condarc.content = {"channel_settings": [{"channel": channel_name, "ssl_verify": False}]}
+    condarc.content = {
+        "channel_settings": [
+            {
+                "channel": channel_name,
+                "auth": "token",
+                "auth_target": channel_name,
+                "ssl_verify": False,
+            }
+        ]
+    }
 
     result = runner.invoke(
         auth,
@@ -268,7 +316,14 @@ def test_login_error_when_storing_secret_preserves_non_auth_settings(runner, key
     assert exc_type == CondaAuthError
     assert "Could not save secret" == exception.message
     assert condarc.content == {
-        "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
+        "channel_settings": [
+            {
+                "channel": channel_name,
+                "auth": "token",
+                "auth_target": channel_name,
+                "ssl_verify": False,
+            }
+        ]
     }
 
 
@@ -386,3 +441,111 @@ def test_login_token_rejects_basic_auth_options(runner, keyring, condarc, option
     assert exc_type is CondaAuthError
     assert exception.message == message
     assert result.output == ""
+
+
+@pytest.mark.parametrize(
+    ("auth_type", "expected_record"),
+    (
+        (
+            "http-basic",
+            {"auth_type": "http-basic", "username": "user", "password": "secret"},
+        ),
+        ("token", {"auth_type": "token", "username": "token", "token": "secret"}),
+    ),
+    ids=("basic", "token"),
+)
+def test_login_infers_auth_type_from_external_channel_settings(
+    monkeypatch,
+    runner,
+    keyring,
+    condarc,
+    auth_type,
+    expected_record,
+):
+    channel = "https://repo.example.com/channel"
+    keyring(None)
+    monkeypatch.setattr(
+        "conda_auth.cli.context",
+        SimpleNamespace(channel_settings=[{"channel": channel, "auth": auth_type}]),
+    )
+    monkeypatch.setattr("conda_auth.cli.prompt_text", lambda prompt: "user")
+    monkeypatch.setattr("conda_auth.cli.prompt_secret", lambda prompt: "secret")
+
+    result = runner.invoke(auth, ["login", channel])
+
+    assert result.exit_code == 0, result.output
+    assert condarc.content == {}
+    condarc.__enter__.assert_not_called()
+    record = storage.get_credential(channel)
+    assert record is not None
+    assert record.to_dict() | expected_record == record.to_dict()
+
+
+def test_login_uses_external_oauth_settings_without_copying_them(
+    monkeypatch,
+    runner,
+    keyring,
+    condarc,
+):
+    channel = "https://repo.example.com/channel"
+    captured = []
+    keyring(None)
+    monkeypatch.setattr(
+        "conda_auth.cli.context",
+        SimpleNamespace(
+            channel_settings=[
+                {
+                    "channel": "https://repo.example.com/*",
+                    "auth": "oauth2",
+                    "oauth_issuer_url": "https://idp.example.com",
+                    "oauth_client_id": "client",
+                    "oauth_flow": "device-code",
+                    "auth_target": "repo-example",
+                }
+            ]
+        ),
+    )
+
+    def perform_oauth_login(config):
+        captured.append(config)
+        return CredentialRecord(
+            target="",
+            auth_type="oauth2",
+            username="oauth2",
+            access_token="access-token",
+            token_endpoint="https://idp.example.com/token",
+            client_id=config.client_id,
+        )
+
+    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+
+    result = runner.invoke(auth, ["login", channel])
+
+    assert result.exit_code == 0, result.output
+    assert condarc.content == {}
+    condarc.__enter__.assert_not_called()
+    assert captured[0].issuer_url == "https://idp.example.com"
+    assert captured[0].client_id == "client"
+    assert captured[0].flow == "device-code"
+    assert storage.get_credential("repo-example") is not None
+
+
+def test_login_rejects_override_of_external_auth_type(monkeypatch, runner, keyring, condarc):
+    channel = "https://repo.example.com/channel"
+    keyring_mock, _ = keyring(None)
+    monkeypatch.setattr(
+        "conda_auth.cli.context",
+        SimpleNamespace(channel_settings=[{"channel": channel, "auth": "oauth2"}]),
+    )
+
+    result = runner.invoke(
+        auth,
+        ["login", channel, "--basic", "--username", "user", "--password", "secret"],
+    )
+    exc_type, exception, _ = result.exc_info
+
+    assert result.exit_code == 1, result.output
+    assert exc_type is CondaAuthError
+    assert "cannot be overridden" in exception.message
+    assert condarc.content == {}
+    keyring_mock.set_password.assert_not_called()

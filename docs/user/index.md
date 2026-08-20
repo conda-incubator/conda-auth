@@ -1,5 +1,12 @@
 # Getting started
 
+```{toctree}
+:maxdepth: 1
+:hidden:
+
+oauth2-recipe-tutorial
+```
+
 The `conda-auth` plugin improves the authentication experience for conda. Read below to learn how to start using it.
 
 ## Installation
@@ -65,7 +72,21 @@ overwrite an existing `Authorization` header.
 ### OAuth 2.0/OIDC authentication
 
 OAuth 2.0 is available for OIDC services that support discovery plus
-authorization-code or device-code login flows:
+authorization-code or device-code login flows.
+
+When a channel operator distributes its OAuth 2.0 configuration as a conda
+package (see [Creating an OAuth 2.0 auth recipe](oauth2-recipe-tutorial.md)),
+no additional flags are needed. Install the package and log in:
+
+```
+conda install resource-handler-auth
+conda auth login https://repo.example.com
+```
+
+#### Manual configuration
+
+If your channel operator does not provide a configuration package, you can
+supply the OAuth2 parameters directly on the command line:
 
 ```
 conda auth login https://repo.example.com --oauth2 \
@@ -73,6 +94,10 @@ conda auth login https://repo.example.com --oauth2 \
   --oauth-client-id my-client \
   --oauth-flow auto
 ```
+
+The `--oauth2`, `--basic`, and `--token` flags are optional when the auth
+type is already configured in `channel_settings` in your condarc. If a
+matching entry exists, the login command infers the auth type automatically.
 
 Supported OAuth 2.0 modes:
 

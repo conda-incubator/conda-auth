@@ -91,7 +91,6 @@ class OAuth2Manager(AuthManager):
         return (
             OAUTH_ISSUER_URL_PARAM_NAME,
             OAUTH_CLIENT_ID_PARAM_NAME,
-            OAUTH_CLIENT_SECRET_PARAM_NAME,
             OAUTH_FLOW_PARAM_NAME,
             OAUTH_SCOPE_PARAM_NAME,
             OAUTH_REDIRECT_URI_PARAM_NAME,

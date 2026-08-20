@@ -3,8 +3,10 @@ import json
 from conda.exceptions import CondaError
 
 from conda_auth.cli import SUCCESSFUL_LOGOUT_MESSAGE, auth
+from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME, manager
+from conda_auth.storage import storage
 
 
 def test_logout_of_active_session(mocker, runner, keyring, condarc):
@@ -110,26 +112,65 @@ def test_logout_does_not_remove_secret_when_condarc_update_fails(mocker, runner,
     keyring_mock.delete_password.assert_not_called()
 
 
-def test_logout_refuses_when_auth_settings_are_not_in_user_condarc(
-    mocker, runner, keyring, condarc
+def test_logout_preserves_auth_settings_outside_user_condarc(
+    monkeypatch,
+    runner,
+    keyring,
+    condarc,
+    context_factory,
 ):
     channel_name = "tester"
     username = "user"
 
-    # Active auth can come from system or environment config, not just the user condarc.
-    mock_context = mocker.patch("conda_auth.cli.context")
-    keyring_mock, _ = keyring("password")
-    mock_context.channel_settings = [
-        {"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}
-    ]
+    keyring(None)
+    storage.set_credential(
+        CredentialRecord(
+            target=channel_name,
+            auth_type=HTTP_BASIC_AUTH_NAME,
+            username=username,
+            password="password",
+        )
+    )
+    monkeypatch.setattr(
+        "conda_auth.cli.context",
+        context_factory(
+            [{"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME, "username": username}]
+        ),
+    )
+    condarc.content = {"channel_settings": [{"channel": channel_name, "ssl_verify": False}]}
+
+    result = runner.invoke(auth, ["logout", channel_name])
+
+    assert result.exit_code == 0, result.output
+    assert storage.get_credential(channel_name) is None
+    condarc.__enter__.assert_not_called()
+    assert condarc.content == {
+        "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
+    }
+
+
+def test_logout_reports_missing_external_credential(
+    monkeypatch,
+    runner,
+    keyring,
+    condarc,
+    context_factory,
+):
+    channel_name = "tester"
+    keyring(None)
+    monkeypatch.setattr(
+        "conda_auth.cli.context",
+        context_factory([{"channel": channel_name, "auth": HTTP_BASIC_AUTH_NAME}]),
+    )
     condarc.content = {"channel_settings": [{"channel": channel_name, "ssl_verify": False}]}
 
     result = runner.invoke(auth, ["logout", channel_name])
     exc_type, exception, _ = result.exc_info
 
-    assert exc_type == CondaAuthError
-    assert "configuration source where they are defined" in exception.message
-    keyring_mock.delete_password.assert_not_called()
+    assert result.exit_code == 1, result.output
+    assert exc_type is CondaAuthError
+    assert "No stored credential" in exception.message
+    condarc.__enter__.assert_not_called()
     assert condarc.content == {
         "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
     }

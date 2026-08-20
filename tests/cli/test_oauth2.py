@@ -97,3 +97,43 @@ def test_build_oauth_login_config_uses_explicit_options():
 def test_build_oauth_login_config_rejects_invalid_options(options, message):
     with pytest.raises(CondaAuthError, match=message):
         build_oauth_login_config(Channel("https://repo.example.com/private"), options)
+
+
+def test_oauth_config_uses_public_channel_settings():
+    config = build_oauth_login_config(
+        Channel("https://repo.example.com/channel"),
+        {"oauth_scopes": []},
+        channel_settings={
+            "oauth_issuer_url": "https://idp.example.com",
+            "oauth_client_id": "configured-client",
+            "oauth_client_secret": "must-not-be-read",
+            "oauth_flow": "device-code",
+            "oauth_scopes": ["openid", "profile"],
+        },
+    )
+
+    assert config == OAuthLoginConfig(
+        issuer_url="https://idp.example.com",
+        client_id="configured-client",
+        flow="device-code",
+        scopes=("openid", "profile"),
+    )
+
+
+def test_oauth_cli_options_override_channel_settings():
+    config = build_oauth_login_config(
+        Channel("https://repo.example.com/channel"),
+        {
+            "oauth_client_id": "cli-client",
+            "oauth_client_secret": "cli-secret",
+            "oauth_flow": "auth-code",
+        },
+        channel_settings={
+            "oauth_client_id": "configured-client",
+            "oauth_flow": "device-code",
+        },
+    )
+
+    assert config.client_id == "cli-client"
+    assert config.client_secret == "cli-secret"
+    assert config.flow == "auth-code"

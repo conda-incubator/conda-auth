@@ -43,7 +43,6 @@ def add_oauth_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--oauth-flow",
         choices=("auto", "auth-code", "device-code"),
-        default="auto",
         help="OAuth flow to use",
     )
     parser.add_argument(

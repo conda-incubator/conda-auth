@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 from conda.models.channel import Channel
@@ -67,7 +68,8 @@ def test_oauth_handler_refreshes_expired_access_token(
         assert auth is None
         return FakeResponse({"access_token": "new-access-token", "expires_in": 3600})
 
-    monkeypatch.setattr("conda_auth.oauth2_client.requests.post", post)
+    session = SimpleNamespace(post=post)
+    monkeypatch.setattr("conda_auth.oauth2_client.get_session", lambda url: session)
 
     request = request_factory()
     handler = OAuth2AuthHandler(target)
@@ -193,7 +195,6 @@ def test_oauth_manager_api():
     assert oauth_manager.get_config_parameters() == (
         "oauth_issuer_url",
         "oauth_client_id",
-        "oauth_client_secret",
         "oauth_flow",
         "oauth_scopes",
         "oauth_redirect_uri",

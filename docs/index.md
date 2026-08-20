@@ -48,7 +48,14 @@ conda auth login example --token
 conda auth login https://example.com/my-protected-channel --token
 ```
 
-<h5>OAuth 2.0/OIDC authentication:</h5>
+<h5>OAuth 2.0/OIDC authentication (config-driven):</h5>
+
+```
+conda install resource-handler-auth
+conda auth login https://example.com/my-protected-channel
+```
+
+<h5>OAuth 2.0/OIDC authentication (manual):</h5>
 
 ```
 conda auth login https://example.com/my-protected-channel --oauth2 \

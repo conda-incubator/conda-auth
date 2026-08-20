@@ -4,8 +4,9 @@ import pytest
 from conda.models.channel import Channel
 
 from conda_auth.cli import auth
-from conda_auth.cli.status import channel_matches, get_status_targets
+from conda_auth.cli.status import get_status_targets
 from conda_auth.credentials import CredentialRecord
+from conda_auth.handlers.base import channel_matches
 from conda_auth.storage.keyring import KeyringStorage
 
 
@@ -117,6 +118,7 @@ def test_status_targets_skip_invalid_settings(monkeypatch, context_factory):
                 None,
                 {"channel": "unconfigured"},
                 {"channel": 1, "auth": "token"},
+                {"channel": "https://[invalid", "auth": "token"},
                 {"channel": "tester", "auth": "token", "auth_target": 1},
             ]
         ),
