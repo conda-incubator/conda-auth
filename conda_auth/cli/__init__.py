@@ -223,24 +223,31 @@ def logout(channel: Channel):
     Log out of a channel by removing any credentials or tokens associated with it.
     """
     settings = find_channel_settings(context.channel_settings, channel)
-    if not settings:
-        raise CondaAuthError("Unable to find information about logged in session.")
+    has_channel_settings = settings is not None
+    if settings is None:
+        record = storage.get_credential(channel.canonical_name)
+        if record is None:
+            raise CondaAuthError("Unable to find information about logged in session.")
+        settings = {"auth": record.auth_type, "auth_target": record.target}
+        if record.username is not None:
+            settings["username"] = record.username
 
     configured_auth = settings.get("auth")
     auth_type, auth_manager = get_auth_manager(
         auth=configured_auth if isinstance(configured_auth, str) else None
     )
 
-    try:
-        user_config = ConfigurationFile.from_user_condarc()
-        removed_auth_settings = remove_channel_settings(user_config, channel.canonical_name)
-        if removed_auth_settings:
-            with user_config:
-                pass
-        elif auth_manager.get_credential_record(channel, settings) is None:
-            raise CondaAuthError("No stored credential was found for the configured channel.")
-    except (CondaError, OSError, yaml.YAMLError) as exc:
-        raise CondaAuthError(str(exc))
+    if has_channel_settings:
+        try:
+            user_config = ConfigurationFile.from_user_condarc()
+            removed_auth_settings = remove_channel_settings(user_config, channel.canonical_name)
+            if removed_auth_settings:
+                with user_config:
+                    pass
+            elif auth_manager.get_credential_record(channel, settings) is None:
+                raise CondaAuthError("No stored credential was found for the configured channel.")
+        except (CondaError, OSError, yaml.YAMLError) as exc:
+            raise CondaAuthError(str(exc))
 
     auth_manager.remove_secret(channel, settings)
     auth_manager.cache_clear(channel.canonical_name)

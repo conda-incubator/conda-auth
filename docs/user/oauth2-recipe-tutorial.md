@@ -49,12 +49,12 @@ channel_settings:
 ### Directory layout
 
 ```
-resource-handler-auth/
+example-oauth2-config/
 |-- recipe.yaml
-`-- resource-handler-auth.yaml    # the channel_settings condarc
+`-- example-oauth2-config.yaml    # the channel_settings condarc
 ```
 
-### `resource-handler-auth.yaml`
+### `example-oauth2-config.yaml`
 
 Write your `channel_settings` block here (see the format above):
 
@@ -81,15 +81,15 @@ build:
   noarch: generic
   script: |
     mkdir -p "${PREFIX}/condarc.d"
-    cp resource-handler-auth.yaml \
-       "${PREFIX}/condarc.d/resource-handler-auth.yaml"
+    cp example-oauth2-config.yaml \
+       "${PREFIX}/condarc.d/example-oauth2-config.yaml"
 
 requirements:
   run:
     - conda-auth
 
 about:
-  summary: conda-auth configuration for resource.example.com
+  summary: conda-auth configuration for repo.example.com
   license: MIT
 ```
 
@@ -116,7 +116,7 @@ Build the package and install it into a test environment:
 
 ```bash
 # Build
-rattler-build build --recipe resource-handler-auth/recipe.yaml
+rattler-build build --recipe example-oauth2-config/recipe.yaml
 
 # Install into the base environment (required for conda plugins)
 conda install --name base --use-local example-oauth2-config

@@ -1,11 +1,14 @@
 import json
 
+import pytest
 from conda.exceptions import CondaError
 
 from conda_auth.cli import SUCCESSFUL_LOGOUT_MESSAGE, auth
 from conda_auth.credentials import CredentialRecord
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.basic_auth import HTTP_BASIC_AUTH_NAME, manager
+from conda_auth.handlers.oauth2 import OAUTH2_NAME
+from conda_auth.handlers.token import TOKEN_NAME
 from conda_auth.storage import storage
 
 
@@ -174,6 +177,33 @@ def test_logout_reports_missing_external_credential(
     assert condarc.content == {
         "channel_settings": [{"channel": channel_name, "ssl_verify": False}]
     }
+
+
+@pytest.mark.parametrize(
+    "record",
+    (
+        CredentialRecord(
+            target="tester",
+            auth_type=HTTP_BASIC_AUTH_NAME,
+            username="user",
+            password="password",
+        ),
+        CredentialRecord(target="tester", auth_type=TOKEN_NAME, token="token"),
+        CredentialRecord(target="tester", auth_type=OAUTH2_NAME, access_token="token"),
+    ),
+    ids=("basic", "token", "oauth2"),
+)
+def test_logout_removes_orphaned_credential(mocker, runner, keyring, condarc, record):
+    mock_context = mocker.patch("conda_auth.cli.context")
+    keyring(None)
+    mock_context.channel_settings = []
+    storage.set_credential(record)
+
+    result = runner.invoke(auth, ["logout", record.target])
+
+    assert result.exit_code == 0, result.output
+    assert storage.get_credential(record.target) is None
+    condarc.__enter__.assert_not_called()
 
 
 def test_logout_of_non_existing_session(mocker, runner, keyring):

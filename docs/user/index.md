@@ -98,6 +98,10 @@ conda auth login https://repo.example.com --oauth2 \
 The `--oauth2`, `--basic`, and `--token` flags are optional when the auth
 type is already configured in `channel_settings` in your condarc. If a
 matching entry exists, the login command infers the auth type automatically.
+Explicit OAuth 2.0 command-line options override their corresponding
+`channel_settings` values. Omitted values come from `channel_settings` and
+then built-in defaults. Client secrets are accepted only through the command
+line or interactive prompt and are stored in the system keyring.
 
 Supported OAuth 2.0 modes:
 

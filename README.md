@@ -31,7 +31,17 @@ conda auth login https://example.com/my-protected-channel --basic
 conda auth login https://example.com/my-protected-channel --token
 ```
 
-**Log in** to a channel with OAuth 2.0/OIDC:
+**Log in** to a channel whose operator provides OAuth 2.0/OIDC defaults:
+
+```
+conda install --name base example-oauth2-config
+conda auth login https://example.com/my-protected-channel
+```
+
+See the [OAuth 2.0 configuration package tutorial](docs/user/oauth2-recipe-tutorial.md)
+for the package format.
+
+**Log in** with OAuth 2.0/OIDC options supplied manually:
 
 ```
 conda auth login https://example.com/my-protected-channel --oauth2 \
