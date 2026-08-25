@@ -6,15 +6,36 @@ from conda.cli.condarc import ConfigurationFile
 
 from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from ..exceptions import CondaAuthError
+from ..oauth2_client import (
+    OAUTH_CLIENT_ID_PARAM_NAME,
+    OAUTH_CLIENT_SECRET_PARAM_NAME,
+    OAUTH_FLOW_PARAM_NAME,
+    OAUTH_ISSUER_URL_PARAM_NAME,
+    OAUTH_REDIRECT_URI_PARAM_NAME,
+    OAUTH_SCOPE_PARAM_NAME,
+    OAUTH_USER_AGENT_PARAM_NAME,
+)
 
-AUTH_CHANNEL_SETTING_KEYS = frozenset(
+AUTH_PUBLIC_CONFIG_KEYS = frozenset(
+    (
+        OAUTH_ISSUER_URL_PARAM_NAME,
+        OAUTH_CLIENT_ID_PARAM_NAME,
+        OAUTH_FLOW_PARAM_NAME,
+        OAUTH_SCOPE_PARAM_NAME,
+        OAUTH_REDIRECT_URI_PARAM_NAME,
+        OAUTH_USER_AGENT_PARAM_NAME,
+        AUTH_ALLOW_PLAINTEXT_HTTP_PARAM,
+    )
+)
+
+AUTH_CHANNEL_SETTING_KEYS = AUTH_PUBLIC_CONFIG_KEYS | frozenset(
     (
         "auth",
         "auth_target",
         "username",
         "password",
         "token",
-        AUTH_ALLOW_PLAINTEXT_HTTP_PARAM,
+        OAUTH_CLIENT_SECRET_PARAM_NAME,
     )
 )
 
@@ -30,6 +51,8 @@ def get_updated_channel_settings(
 ) -> list:
     """
     Replace the auth-owned settings for a single channel.
+
+    Public configuration is retained when the authentication type is unchanged.
     """
     updated_settings: dict[str, object] = {"channel": channel}
     last_channel_index = next(
@@ -41,11 +64,14 @@ def get_updated_channel_settings(
         None,
     )
     if last_channel_index is not None:
+        current_settings = channel_settings[last_channel_index]
+        preserve_public_config = current_settings.get("auth") == auth_type
         updated_settings.update(
             {
                 key: value
-                for key, value in channel_settings[last_channel_index].items()
+                for key, value in current_settings.items()
                 if key not in AUTH_CHANNEL_SETTING_KEYS
+                or (preserve_public_config and key in AUTH_PUBLIC_CONFIG_KEYS)
             }
         )
 
@@ -109,6 +135,7 @@ def remove_channel_settings(config: ConfigurationFile, channel: str) -> bool:
         removed_auth_settings = removed_auth_settings or any(
             key in settings for key in AUTH_CHANNEL_SETTING_KEYS
         )
+
         updated_settings = {
             key: value for key, value in settings.items() if key not in AUTH_CHANNEL_SETTING_KEYS
         }

@@ -4,8 +4,9 @@ import pytest
 from conda.models.channel import Channel
 
 from conda_auth.cli import auth
-from conda_auth.cli.status import channel_matches, get_status_targets
+from conda_auth.cli.status import get_status_targets
 from conda_auth.credentials import CredentialRecord
+from conda_auth.handlers.base import channel_matches
 from conda_auth.storage.keyring import KeyringStorage
 
 
@@ -117,6 +118,7 @@ def test_status_targets_skip_invalid_settings(monkeypatch, context_factory):
                 None,
                 {"channel": "unconfigured"},
                 {"channel": 1, "auth": "token"},
+                {"channel": "https://[invalid", "auth": "token"},
                 {"channel": "tester", "auth": "token", "auth_target": 1},
             ]
         ),
@@ -169,3 +171,88 @@ def test_status_displays_credential_expiration(
 
     assert result.exit_code == 0, result.output
     assert result.output == "tester: oauth2 expires_at=3600\n"
+
+
+@pytest.mark.parametrize(
+    ("client_secret_args", "expected_prompt"),
+    (
+        pytest.param(
+            ("--oauth-client-secret", "client-secret"),
+            False,
+            id="argument",
+        ),
+        pytest.param(("--oauth-client-secret",), True, id="prompt"),
+    ),
+)
+def test_oauth_login_uses_explicit_endpoint_options(
+    monkeypatch,
+    runner,
+    keyring,
+    condarc,
+    client_secret_args,
+    expected_prompt,
+):
+    """Generic OAuth login uses caller-supplied endpoint configuration."""
+    keyring(None)
+    seen = {}
+    prompts = []
+
+    def perform_oauth_login(config):
+        seen["config"] = config
+        return CredentialRecord(
+            target="",
+            auth_type="oauth2",
+            username="oauth2",
+            access_token="access-token",
+            refresh_token="refresh-token",
+            token_endpoint="https://idp.example.com/token",
+            revocation_endpoint="https://idp.example.com/revoke",
+            client_id=config.client_id,
+            client_secret=config.client_secret,
+            issuer_url=config.issuer_url,
+            scopes=config.scopes,
+        )
+
+    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+    monkeypatch.setattr(
+        "conda_auth.cli.prompt_secret",
+        lambda prompt: prompts.append(prompt) or "client-secret",
+    )
+
+    result = runner.invoke(
+        auth,
+        [
+            "login",
+            "https://repo.example.com/private",
+            "--oauth2",
+            "--oauth-issuer-url",
+            "https://idp.example.com",
+            "--oauth-client-id",
+            "client-id",
+            *client_secret_args,
+            "--oauth-scope",
+            "channel:read",
+            "--oauth-flow",
+            "device-code",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert seen["config"].issuer_url == "https://idp.example.com"
+    assert seen["config"].client_id == "client-id"
+    assert seen["config"].client_secret == "client-secret"
+    assert seen["config"].flow == "device-code"
+    assert seen["config"].scopes == ("channel:read",)
+    assert prompts == (["OAuth client secret: "] if expected_prompt else [])
+    assert condarc.content == {
+        "channel_settings": [
+            {
+                "channel": "https://repo.example.com/private",
+                "auth": "oauth2",
+                "auth_target": "https://repo.example.com/private",
+            }
+        ]
+    }
+    stored = KeyringStorage().get_credential("https://repo.example.com/private")
+    assert stored is not None
+    assert stored.client_secret == "client-secret"

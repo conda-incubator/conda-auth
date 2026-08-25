@@ -28,10 +28,13 @@ def conda_auth_handlers():
     """
     from .handlers import (
         HTTP_BASIC_AUTH_NAME,
+        OAUTH2_NAME,
         TOKEN_NAME,
         BasicAuthHandler,
+        OAuth2AuthHandler,
         TokenAuthHandler,
     )
 
     yield CondaAuthHandler(name=HTTP_BASIC_AUTH_NAME, handler=BasicAuthHandler)
     yield CondaAuthHandler(name=TOKEN_NAME, handler=TokenAuthHandler)
+    yield CondaAuthHandler(name=OAUTH2_NAME, handler=OAuth2AuthHandler)

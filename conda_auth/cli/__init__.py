@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from copy import deepcopy
 from getpass import getpass
 from typing import Literal
 
@@ -14,17 +16,22 @@ from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from ..exceptions import CondaAuthError
 from ..handlers import (
     HTTP_BASIC_AUTH_NAME,
+    OAUTH2_NAME,
     TOKEN_NAME,
     AuthManager,
     basic_auth_manager,
+    oauth2_auth_manager,
     token_auth_manager,
 )
-from ..handlers.base import allows_plaintext_http, validate_secure_channel
+from ..handlers.base import allows_plaintext_http, find_channel_settings, validate_secure_channel
+from ..oauth2_client import perform_oauth_login, with_target
+from ..storage import storage
 from .config import (
     get_updated_channel_settings,
     remove_channel_settings,
     update_channel_settings,
 )
+from .oauth2 import build_oauth_login_config
 from .parser import PROMPT_VALUE, build_parser, configure_parser
 from .status import output_status
 from .status import status as get_status
@@ -32,6 +39,7 @@ from .status import status as get_status
 AUTH_MANAGER_MAPPING = {
     HTTP_BASIC_AUTH_NAME: basic_auth_manager,
     TOKEN_NAME: token_auth_manager,
+    OAUTH2_NAME: oauth2_auth_manager,
 }
 
 SUCCESSFUL_LOGIN_MESSAGE = "Successfully stored credentials"
@@ -80,17 +88,20 @@ def get_auth_manager(
     auth: str | None = None,
     basic: bool | None = None,
     token: str | Literal[False] | None = None,
+    oauth2: bool | None = None,
     **kwargs,
 ) -> tuple[str, AuthManager]:
     """
     Based on CLI options provided, return the correct auth manager to use.
     """
     if auth:  # set in .condarc
-        pass
+        auth = auth.strip().lower()
     elif basic:  # defined on CLI
         auth = HTTP_BASIC_AUTH_NAME
-    elif token:  # defined on CLI
+    elif token is not None:  # defined on CLI
         auth = TOKEN_NAME
+    elif oauth2:  # defined on CLI
+        auth = OAUTH2_NAME
     else:
         raise CondaAuthError("Missing authentication type.")
 
@@ -108,51 +119,102 @@ def login(channel: Channel, **kwargs):
     Log in to a channel by storing the credentials or tokens associated with it.
     """
     auth_type, auth_manager = get_auth_manager(**kwargs)
-    allow_plaintext_http = allows_plaintext_http(kwargs)
-    channel_setting = channel.canonical_name
-    credential_target = channel_setting
-    extra_params = {
-        param: kwargs.get(param)
-        for param in auth_manager.get_config_parameters()
-        if kwargs.get(param) is not None
-    }
-    extra_params["auth_target"] = credential_target
-    if allow_plaintext_http:
-        extra_params[AUTH_ALLOW_PLAINTEXT_HTTP_PARAM] = True
-    username, secret = auth_manager.fetch_secret(channel, extra_params, use_cache=False)
+    configured_settings = find_channel_settings(context.channel_settings, channel)
+    configured_auth_value = configured_settings.get("auth") if configured_settings else None
+    configured_auth = (
+        configured_auth_value.strip().lower() if isinstance(configured_auth_value, str) else None
+    )
 
+    user_config = ConfigurationFile.from_user_condarc()
     try:
-        with ConfigurationFile.from_user_condarc() as config:
-            update_channel_settings(
-                config,
-                channel_setting,
-                auth_type,
-                None,
-                auth_target=credential_target,
-                allow_plaintext_http=allow_plaintext_http,
-            )
+        original_user_content = deepcopy(user_config.content)
+        user_channel_settings = user_config.content.get("channel_settings", []) or []
+        if not isinstance(user_channel_settings, list):
+            raise CondaAuthError("Expected 'channel_settings' to be a list")
     except (CondaError, OSError, yaml.YAMLError) as exc:
-        auth_manager.cache_clear(channel.canonical_name)
         raise CondaAuthError(str(exc))
 
-    try:
-        auth_manager.save_credentials(
-            channel,
-            username,
-            secret,
-            allow_plaintext_http=allow_plaintext_http,
-            target=credential_target,
-            settings=extra_params,
+    user_settings = find_channel_settings(user_channel_settings, channel)
+    user_auth_value = user_settings.get("auth") if user_settings else None
+    user_auth = user_auth_value.strip().lower() if isinstance(user_auth_value, str) else None
+    external_auth = configured_auth is not None and user_auth != configured_auth
+    if external_auth and configured_auth != auth_type:
+        raise CondaAuthError(
+            f"Channel settings require authentication type {configured_auth!r}, "
+            f"which cannot be overridden with {auth_type!r}."
         )
+
+    auth_settings = configured_settings if configured_auth == auth_type else None
+    allow_plaintext_http = allows_plaintext_http(kwargs) or allows_plaintext_http(auth_settings)
+    channel_setting = channel.canonical_name
+    configured_target = auth_settings.get("auth_target") if auth_settings else None
+    credential_target = (
+        configured_target if isinstance(configured_target, str) else channel_setting
+    )
+    validate_secure_channel(channel, allow_plaintext_http=allow_plaintext_http)
+
+    record = None
+    username: str | None = None
+    secret: str | None = None
+    if auth_type == OAUTH2_NAME:
+        oauth_config = build_oauth_login_config(
+            channel,
+            kwargs,
+            channel_settings=auth_settings,
+        )
+        record = with_target(perform_oauth_login(oauth_config), credential_target)
+    else:
+        extra_params = {
+            param: kwargs.get(param)
+            for param in auth_manager.get_config_parameters()
+            if kwargs.get(param) is not None
+        }
+        extra_params["auth_target"] = credential_target
+        if allow_plaintext_http:
+            extra_params[AUTH_ALLOW_PLAINTEXT_HTTP_PARAM] = True
+        username, secret = auth_manager.fetch_secret(channel, extra_params, use_cache=False)
+
+    wrote_user_condarc = False
+
+    if not external_auth:
+        try:
+            with user_config as config:
+                update_channel_settings(
+                    config,
+                    channel_setting,
+                    auth_type,
+                    None,
+                    auth_target=credential_target,
+                    allow_plaintext_http=allow_plaintext_http,
+                )
+                wrote_user_condarc = True
+        except (CondaError, OSError, yaml.YAMLError) as exc:
+            auth_manager.cache_clear(channel.canonical_name)
+            raise CondaAuthError(str(exc))
+
+    try:
+        if record is not None:
+            storage.set_credential(record)
+        elif username is not None and secret is not None:
+            auth_manager.save_credentials(
+                channel,
+                username,
+                secret,
+                allow_plaintext_http=allow_plaintext_http,
+                target=credential_target,
+                settings=extra_params,
+            )
     except Exception as credential_error:
         auth_manager.cache_clear(channel.canonical_name)
-        try:
-            with ConfigurationFile.from_user_condarc() as config:
-                remove_channel_settings(config, channel_setting)
-        except (CondaError, OSError, yaml.YAMLError) as rollback_error:
-            raise CondaAuthError(
-                f"{credential_error}. Failed to roll back channel settings: {rollback_error}"
-            ) from credential_error
+        if wrote_user_condarc:
+            try:
+                with ConfigurationFile.from_user_condarc() as config:
+                    config.content.clear()
+                    config.content.update(original_user_content)
+            except (CondaError, OSError, yaml.YAMLError) as rollback_error:
+                raise CondaAuthError(
+                    f"{credential_error}. Failed to roll back channel settings: {rollback_error}"
+                ) from credential_error
         raise
 
 
@@ -160,29 +222,32 @@ def logout(channel: Channel):
     """
     Log out of a channel by removing any credentials or tokens associated with it.
     """
-    settings = next(
-        (
-            settings
-            for settings in context.channel_settings
-            if settings.get("channel") == channel.canonical_name
-        ),
-        None,
+    settings = find_channel_settings(context.channel_settings, channel)
+    has_channel_settings = settings is not None
+    if settings is None:
+        record = storage.get_credential(channel.canonical_name)
+        if record is None:
+            raise CondaAuthError("Unable to find information about logged in session.")
+        settings = {"auth": record.auth_type, "auth_target": record.target}
+        if record.username is not None:
+            settings["username"] = record.username
+
+    configured_auth = settings.get("auth")
+    auth_type, auth_manager = get_auth_manager(
+        auth=configured_auth if isinstance(configured_auth, str) else None
     )
-    if not settings:
-        raise CondaAuthError("Unable to find information about logged in session.")
 
-    auth_type, auth_manager = get_auth_manager(**settings)
-
-    try:
-        with ConfigurationFile.from_user_condarc() as config:
-            removed_auth_settings = remove_channel_settings(config, channel.canonical_name)
-            if not removed_auth_settings:
-                raise CondaAuthError(
-                    "Unable to remove authentication settings from the user condarc. "
-                    "Remove them from the configuration source where they are defined."
-                )
-    except (CondaError, OSError, yaml.YAMLError) as exc:
-        raise CondaAuthError(str(exc))
+    if has_channel_settings:
+        try:
+            user_config = ConfigurationFile.from_user_condarc()
+            removed_auth_settings = remove_channel_settings(user_config, channel.canonical_name)
+            if removed_auth_settings:
+                with user_config:
+                    pass
+            elif auth_manager.get_credential_record(channel, settings) is None:
+                raise CondaAuthError("No stored credential was found for the configured channel.")
+        except (CondaError, OSError, yaml.YAMLError) as exc:
+            raise CondaAuthError(str(exc))
 
     auth_manager.remove_secret(channel, settings)
     auth_manager.cache_clear(channel.canonical_name)
@@ -198,46 +263,86 @@ def auth(args: argparse.Namespace) -> None:
 
     if args.command == "login":
         token = args.token
-
-        if not args.basic and token is None:
-            raise CondaAuthError("Missing option 'basic' / 'token'.")
-
-        if token is not None:
-            if args.username is not None:
-                raise CondaAuthError("Option 'username' cannot be used with 'token'")
-            if args.password is not None:
-                raise CondaAuthError("Option 'password' cannot be used with 'token'")
+        basic = args.basic
+        oauth2 = args.oauth2
 
         channel = Channel(args.channel)
-        validate_secure_channel(
-            channel,
-            allow_plaintext_http=args.allow_plaintext_http,
+        channel_settings = find_channel_settings(context.channel_settings, channel)
+        configured_auth_value = channel_settings.get("auth") if channel_settings else None
+        configured_auth = (
+            configured_auth_value.strip().lower()
+            if isinstance(configured_auth_value, str)
+            else None
         )
 
-        if token is not None:
-            if token is PROMPT_VALUE:
-                token = prompt_secret("Token: ")
+        if not basic and token is None and not oauth2:
+            if configured_auth == OAUTH2_NAME:
+                oauth2 = True
+            elif configured_auth == HTTP_BASIC_AUTH_NAME:
+                basic = True
+            elif configured_auth == TOKEN_NAME:
+                token = PROMPT_VALUE
+            else:
+                raise CondaAuthError("Missing option 'basic' / 'token' / 'oauth2'.")
+
+        if basic:
+            selected_auth = HTTP_BASIC_AUTH_NAME
+        elif token is not None:
+            selected_auth = TOKEN_NAME
+        else:
+            selected_auth = OAUTH2_NAME
+
+        if token is not None or oauth2:
+            if args.username is not None:
+                raise CondaAuthError("Option 'username' cannot be used with 'token' or 'oauth2'")
+            if args.password is not None:
+                raise CondaAuthError("Option 'password' cannot be used with 'token' or 'oauth2'")
+
+        validate_secure_channel(
+            channel,
+            allow_plaintext_http=args.allow_plaintext_http
+            or (configured_auth == selected_auth and allows_plaintext_http(channel_settings)),
+        )
+
+        if token is PROMPT_VALUE:
+            token = prompt_secret("Token: ")
+
+        oauth_client_secret = args.oauth_client_secret
+        if oauth_client_secret is PROMPT_VALUE:
+            oauth_client_secret = prompt_secret("OAuth client secret: ")
+        oauth_output_stream = sys.stderr if args.json else None
+
+        if basic:
+            username = args.username
+            password = args.password
+
+            if username is None:
+                username = prompt_text("Username: ")
+            if password is None:
+                password = prompt_secret("Password: ")
+
             login(
                 channel,
-                token=token,
+                basic=True,
+                username=username,
+                password=password,
                 auth_allow_plaintext_http=args.allow_plaintext_http,
             )
             output_success(args, SUCCESSFUL_LOGIN_MESSAGE)
             return
 
-        username = args.username
-        password = args.password
-
-        if username is None:
-            username = prompt_text("Username: ")
-        if password is None:
-            password = prompt_secret("Password: ")
-
         login(
             channel,
-            basic=True,
-            username=username,
-            password=password,
+            token=token,
+            oauth2=oauth2,
+            oauth_issuer_url=args.oauth_issuer_url,
+            oauth_client_id=args.oauth_client_id,
+            oauth_client_secret=oauth_client_secret,
+            oauth_flow=args.oauth_flow,
+            oauth_scopes=args.oauth_scopes,
+            oauth_redirect_uri=args.oauth_redirect_uri,
+            user_agent=args.user_agent,
+            oauth_output_stream=oauth_output_stream,
             auth_allow_plaintext_http=args.allow_plaintext_http,
         )
         output_success(args, SUCCESSFUL_LOGIN_MESSAGE)

@@ -24,6 +24,7 @@ requirements:
     - hatch-vcs
   run:
     - python >=3.10,<4.0.0
+    - authlib >=1.7.2
     - conda >=26.1
     - keyring
     - requests

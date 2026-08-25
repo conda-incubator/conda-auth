@@ -57,6 +57,34 @@ def test_get_updated_channel_settings_updates_last_exact_channel():
     ]
 
 
+def test_get_updated_channel_settings_preserves_same_type_public_config():
+    channel_settings = [
+        {
+            "channel": "https://repo.example.com",
+            "auth": "oauth2",
+            "oauth_client_id": "client",
+            "oauth_client_secret": "must-not-survive",
+            "oauth_flow": "device-code",
+            "ssl_verify": False,
+        }
+    ]
+
+    assert get_updated_channel_settings(
+        channel_settings,
+        "https://repo.example.com",
+        "oauth2",
+    ) == [
+        {
+            "channel": "https://repo.example.com",
+            "auth": "oauth2",
+            "auth_target": "https://repo.example.com",
+            "oauth_client_id": "client",
+            "oauth_flow": "device-code",
+            "ssl_verify": False,
+        }
+    ]
+
+
 def test_update_non_existing_condarc_file(tmp_path):
     channel = "tester"
     username = "username"

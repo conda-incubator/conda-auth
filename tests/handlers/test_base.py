@@ -9,6 +9,8 @@ from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers.base import (
     AuthManager,
     allows_plaintext_http,
+    channel_matches,
+    find_channel_settings,
     get_url_host,
     is_loopback_host,
     validate_secure_channel,
@@ -118,6 +120,45 @@ def test_is_loopback_host(host, expected):
 )
 def test_allows_plaintext_http(settings, expected):
     assert allows_plaintext_http(settings) is expected
+
+
+@pytest.mark.parametrize(
+    ("configured_channel", "channel_name", "expected"),
+    (
+        ("tester", "tester", True),
+        ("https://repo.example.com/channel/", "https://repo.example.com/channel", True),
+        ("https://repo.example.com/*", "https://repo.example.com/channel", True),
+        ("https://repo.example.com:*/*", "https://repo.example.com:8443/channel", True),
+        ("http://repo.example.com/*", "https://repo.example.com/channel", False),
+        ("*", "https://repo.example.com/channel", False),
+        ("https://repo.example.com/*", None, False),
+        ("https://[invalid/*", "https://repo.example.com/channel", False),
+    ),
+    ids=(
+        "name",
+        "trailing-slash",
+        "path-pattern",
+        "port-pattern",
+        "scheme-mismatch",
+        "missing-scheme",
+        "missing-base-url",
+        "invalid-pattern",
+    ),
+)
+def test_channel_matches(configured_channel, channel_name, expected):
+    assert channel_matches(configured_channel, Channel(channel_name)) is expected
+
+
+def test_find_channel_settings_uses_last_matching_entry():
+    channel = Channel("https://repo.example.com/channel")
+    settings = (
+        {"channel": "https://repo.example.com/channel", "auth": " HTTP-BASIC "},
+        {"channel": "https://repo.example.com/*", "auth": "token"},
+    )
+
+    assert find_channel_settings(settings, channel) == settings[-1]
+    assert find_channel_settings(settings, channel, auth_type="http-basic") == settings[0]
+    assert find_channel_settings((None, {}, {"channel": 1}), channel) is None
 
 
 def test_auth_manager_builds_default_credential_record():

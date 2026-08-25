@@ -1,5 +1,12 @@
 # Getting started
 
+```{toctree}
+:maxdepth: 1
+:hidden:
+
+oauth2-recipe-tutorial
+```
+
 The `conda-auth` plugin improves the authentication experience for conda. Read below to learn how to start using it.
 
 ## Installation
@@ -59,10 +66,80 @@ Passing tokens directly on the command line may expose them in shell history or 
 listings. Prefer the prompt-based command when working interactively.
 ```
 
-For other channels not hosted at anaconda.org, use the full URL of the channel:
+The request handler sends this as `Authorization: Bearer <token>` and does not
+overwrite an existing `Authorization` header.
+
+### OAuth 2.0/OIDC authentication
+
+OAuth 2.0 is available for OIDC services that support discovery plus
+authorization-code or device-code login flows.
+
+When a channel operator distributes its OAuth 2.0 configuration as a conda
+package (see [Creating an OAuth 2.0 auth recipe](oauth2-recipe-tutorial.md)),
+no additional flags are needed. Install the package and log in:
 
 ```
-conda auth login https://example.com/my-protected-channel --token
+conda install resource-handler-auth
+conda auth login https://repo.example.com
+```
+
+#### Manual configuration
+
+If your channel operator does not provide a configuration package, you can
+supply the OAuth2 parameters directly on the command line:
+
+```
+conda auth login https://repo.example.com --oauth2 \
+  --oauth-issuer-url https://idp.example.com \
+  --oauth-client-id my-client \
+  --oauth-flow auto
+```
+
+The `--oauth2`, `--basic`, and `--token` flags are optional when the auth
+type is already configured in `channel_settings` in your condarc. If a
+matching entry exists, the login command infers the auth type automatically.
+Explicit OAuth 2.0 command-line options override their corresponding
+`channel_settings` values. Omitted values come from `channel_settings` and
+then built-in defaults. Client secrets are accepted only through the command
+line or interactive prompt and are stored in the system keyring.
+
+Supported OAuth 2.0 modes:
+
+- `auto`: tries browser authorization-code login first, and falls back to device-code
+  when the browser cannot be opened
+- `auth-code`: browser login with a localhost callback and PKCE
+- `device-code`: headless login for SSH and terminal-only environments
+
+Additional OAuth options include `--oauth-client-secret`, repeatable
+`--oauth-scope`, `--oauth-redirect-uri`, and `--user-agent`. conda-auth refreshes
+OAuth 2.0 access tokens before expiry when a refresh token is available, and
+attempts token revocation on logout when the OAuth server advertises a revocation
+endpoint.
+
+When supplied, the OAuth client secret is stored only in the credential record in
+the system keyring. It is not written to `channel_settings` in the condarc.
+
+The password grant, implicit flow, and client credentials grant are not supported.
+
+### Channel transports
+
+Conda auth supports authenticated HTTP(S) channel services. Remote channels must use
+HTTPS by default, and FTP and file channels are not supported by these auth handlers.
+
+Conda's `s3://` support currently uses boto3's normal AWS credential chain, such as
+environment variables, profiles, and instance credentials. Conda auth does not set
+process-wide AWS environment variables. First-class channel-scoped S3 credentials
+need a future conda-side S3 credential hook.
+
+For an explicitly trusted plaintext HTTP channel, opt in per channel:
+
+```
+conda auth login http://example.com/my-protected-channel --basic --allow-plaintext-http
+```
+
+```{caution}
+Plaintext HTTP sends credentials without transport encryption. Prefer HTTPS whenever
+possible, and only use `--allow-plaintext-http` for endpoints you explicitly trust.
 ```
 
 ### Logging out of a channel
@@ -83,6 +160,9 @@ Both `login` and `logout` support JSON output for automation:
 conda auth login <channel_name> --token --json
 conda auth logout <channel_name> --json
 ```
+
+`status` output is redacted and does not print stored tokens, passwords, OAuth 2.0
+access tokens, or refresh tokens.
 
 ### Storage backend unavailable?
 
