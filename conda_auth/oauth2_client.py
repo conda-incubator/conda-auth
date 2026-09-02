@@ -346,14 +346,15 @@ class OAuthClient:
                 headers=self.headers(self.config.user_agent),
                 timeout=30,
             )
-            if token_response.status_code == 200:
+            token_data = token_response.json()
+            if token_response.status_code == 200 and token_data.get("access_token"):
                 return self.tokens_from_response(
-                    token_response.json(),
+                    token_data,
                     token_endpoint,
                     self.metadata.revocation_endpoint,
                 )
 
-            error = token_response.json().get("error")
+            error = token_data.get("error")
             if error == "authorization_pending":
                 continue
             if error == "slow_down":

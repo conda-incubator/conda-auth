@@ -482,6 +482,57 @@ def test_device_code_flow_polls_until_authorized(monkeypatch):
     )
 
 
+def test_device_code_flow_handles_200_status_pending_response(monkeypatch):
+    """Some providers (e.g. GitHub) respond with HTTP 200 for pending polls.
+
+    The response body still needs to be inspected for an "access_token" before
+    treating the poll as successful, otherwise a pending/error response with a
+    200 status code would be mistaken for a successful token response.
+    """
+    responses = [
+        FakeResponse(
+            {
+                "verification_uri": "https://github.com/login/device",
+                "user_code": "11CA-E851",
+                "device_code": "f666bd553c568c6ee268c0e8be2b59aa2595be94",
+                "interval": 1,
+                "expires_in": 899,
+            }
+        ),
+        # GitHub returns HTTP 200 even while authorization is still pending.
+        FakeResponse({"error": "authorization_pending"}, status_code=200),
+        FakeResponse(
+            {"access_token": "access", "refresh_token": "refresh"},
+            status_code=200,
+        ),
+    ]
+    sleeps = []
+
+    monkeypatch.setattr(
+        oauth2_client.requests,
+        "post",
+        lambda url, data, headers, timeout: responses.pop(0),
+    )
+    monkeypatch.setattr(oauth2_client.time, "time", lambda: 100)
+    monkeypatch.setattr(oauth2_client.time, "sleep", sleeps.append)
+    config = OAuthLoginConfig("https://idp.example.com", "client", flow="device-code")
+    metadata = {
+        "token_endpoint": "https://idp.example.com/token",
+        "device_authorization_endpoint": "https://idp.example.com/device",
+        "revocation_endpoint": "https://idp.example.com/revoke",
+    }
+
+    tokens = device_code_flow(config, metadata)
+
+    assert tokens == OAuthTokens(
+        access_token="access",
+        refresh_token="refresh",
+        token_endpoint="https://idp.example.com/token",
+        revocation_endpoint="https://idp.example.com/revoke",
+    )
+    assert sleeps == [1, 1]
+
+
 @pytest.mark.parametrize(
     ("metadata", "device_data", "expires_in", "message"),
     (
