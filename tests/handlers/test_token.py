@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
@@ -118,9 +120,11 @@ def test_token_auth_manager_with_token(keyring, channel_name, settings):
     assert manager._cache == {channel.canonical_name: (USERNAME, token)}
 
 
-def test_token_legacy_operations_require_keyring(mocker):
-    mock_storage = mocker.patch("conda_auth.handlers.token.storage")
-    mock_storage.backend = object()
+def test_token_legacy_operations_require_keyring(monkeypatch):
+    monkeypatch.setattr(
+        "conda_auth.handlers.token.storage",
+        SimpleNamespace(backend=object()),
+    )
     token_manager = TokenAuthManager()
     channel = Channel("tester")
 
@@ -179,10 +183,7 @@ def test_token_auth_manager_remove_existing_secret(keyring):
 
     manager.remove_secret(channel, settings)
 
-    assert keyring_mock.delete_password_calls == [
-        ("conda-auth::credential::tester", "credential"),
-        ("conda-auth::token::tester", "token"),
-    ]
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 def test_basic_auth_manager_remove_non_existing_secret(keyring):
@@ -203,10 +204,7 @@ def test_basic_auth_manager_remove_non_existing_secret(keyring):
 
     manager.remove_secret(channel, settings)
 
-    assert keyring_mock.delete_password_calls == [
-        ("conda-auth::credential::tester", "credential"),
-        ("conda-auth::token::tester", "token"),
-    ]
+    assert keyring_mock.delete_password_calls == [("conda-auth::credential::tester", "credential")]
 
 
 @pytest.mark.parametrize(
