@@ -485,10 +485,11 @@ class OAuthClient:
         )
 
     @staticmethod
-    def headers(user_agent: str | None) -> dict[str, str] | None:
-        if user_agent is None:
-            return None
-        return {"User-Agent": user_agent}
+    def headers(user_agent: str | None) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if user_agent is not None:
+            headers["User-Agent"] = user_agent
+        return headers
 
 
 def discover_oauth_metadata(config: OAuthLoginConfig) -> dict[str, object]:

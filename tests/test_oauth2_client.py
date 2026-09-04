@@ -275,11 +275,23 @@ def test_discover_oauth_metadata(monkeypatch, body, expected_error):
     assert calls == [
         (
             "https://idp.example.com/.well-known/openid-configuration",
-            {"User-Agent": "conda-auth-test"},
+            {"User-Agent": "conda-auth-test", "Accept": "application/json"},
             30,
         )
     ]
     assert response.raise_for_status_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("user_agent", "expected"),
+    (
+        ("conda-auth-test", {"Accept": "application/json", "User-Agent": "conda-auth-test"}),
+        (None, {"Accept": "application/json"}),
+    ),
+    ids=("with-user-agent", "without-user-agent"),
+)
+def test_headers_always_includes_accept_json(user_agent, expected):
+    assert OAuthClient.headers(user_agent) == expected
 
 
 @pytest.mark.parametrize(
@@ -711,7 +723,7 @@ def test_refresh_record_updates_tokens(
     assert refreshed.client_secret == client_secret
     _, data, auth, headers, timeout = calls[0]
     assert data["grant_type"] == "refresh_token"
-    assert headers == {"User-Agent": "conda-auth-test"}
+    assert headers == {"User-Agent": "conda-auth-test", "Accept": "application/json"}
     assert timeout == 30
     if client_secret is None:
         assert data["client_id"] == "client"
@@ -792,7 +804,7 @@ def test_revoke_record_uses_refresh_token_and_client_auth(monkeypatch, client_se
 
     _, data, auth, headers, timeout = calls[0]
     assert data["token"] == "refresh"
-    assert headers == {"User-Agent": "conda-auth-test"}
+    assert headers == {"User-Agent": "conda-auth-test", "Accept": "application/json"}
     assert timeout == 30
     if client_secret is None:
         assert data["client_id"] == "client"
