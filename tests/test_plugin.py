@@ -7,6 +7,7 @@ import pytest
 
 from conda_auth import plugin
 from conda_auth.cli import configure_parser
+from conda_auth.constants import PROXY_NETWORK_COMMANDS
 from conda_auth.handlers import (
     HTTP_BASIC_AUTH_NAME,
     OAUTH2_NAME,
@@ -44,6 +45,25 @@ def test_conda_auth_handlers_hook(index, name, handler):
 
     assert objs[index].name == name
     assert objs[index].handler == handler
+
+
+def test_conda_pre_commands_hook(monkeypatch):
+    """The proxy pre-command hook runs only for network commands."""
+    applied_credentials = []
+
+    class FakeProxyAuthManager:
+        def apply_to_context(self):
+            applied_credentials.append(True)
+
+    monkeypatch.setattr("conda_auth.proxy.ProxyAuthManager", FakeProxyAuthManager)
+
+    objs = list(plugin.conda_pre_commands())
+
+    assert len(objs) == 1
+    assert objs[0].name == "conda-auth-proxy"
+    assert objs[0].run_for == set(PROXY_NETWORK_COMMANDS)
+    objs[0].action("search")
+    assert applied_credentials == [True]
 
 
 def test_plugin_import_does_not_eagerly_import_runtime_modules():

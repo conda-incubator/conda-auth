@@ -7,6 +7,7 @@ from conda_auth.cli import (
     remove_channel_settings,
     update_channel_settings,
 )
+from conda_auth.cli.config import update_proxy_server
 from conda_auth.exceptions import CondaAuthError
 
 CONDARC_CONTENT = """
@@ -230,3 +231,15 @@ def test_channel_settings_helpers_require_list(settings_func, args):
 
     with pytest.raises(CondaAuthError, match="Expected 'channel_settings' to be a list"):
         settings_func(config, *args)
+
+
+@pytest.mark.parametrize(
+    "proxy_servers",
+    ("http://proxy.example.com:8080", ["http://proxy.example.com:8080"]),
+    ids=("string", "list"),
+)
+def test_update_proxy_server_requires_mapping(proxy_servers):
+    config = ConfigurationFile(content={"proxy_servers": proxy_servers})
+
+    with pytest.raises(CondaAuthError, match="Expected 'proxy_servers' to be a mapping"):
+        update_proxy_server(config, "http", "http://proxy.example.com:8080")
