@@ -213,9 +213,9 @@ def test_oauth_login_uses_explicit_endpoint_options(
             scopes=config.scopes,
         )
 
-    monkeypatch.setattr("conda_auth.cli.perform_oauth_login", perform_oauth_login)
+    monkeypatch.setattr("conda_auth.cli.channel.perform_oauth_login", perform_oauth_login)
     monkeypatch.setattr(
-        "conda_auth.cli.prompt_secret",
+        "conda_auth.cli.channel.prompt_secret",
         lambda prompt: prompts.append(prompt) or "client-secret",
     )
 
