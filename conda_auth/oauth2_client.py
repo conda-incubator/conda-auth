@@ -346,14 +346,15 @@ class OAuthClient:
                 headers=self.headers(self.config.user_agent),
                 timeout=30,
             )
-            if token_response.status_code == 200:
+            token_data = token_response.json()
+            if token_response.status_code == 200 and token_data.get("access_token"):
                 return self.tokens_from_response(
-                    token_response.json(),
+                    token_data,
                     token_endpoint,
                     self.metadata.revocation_endpoint,
                 )
 
-            error = token_response.json().get("error")
+            error = token_data.get("error")
             if error == "authorization_pending":
                 continue
             if error == "slow_down":
@@ -484,10 +485,11 @@ class OAuthClient:
         )
 
     @staticmethod
-    def headers(user_agent: str | None) -> dict[str, str] | None:
-        if user_agent is None:
-            return None
-        return {"User-Agent": user_agent}
+    def headers(user_agent: str | None) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if user_agent is not None:
+            headers["User-Agent"] = user_agent
+        return headers
 
 
 def discover_oauth_metadata(config: OAuthLoginConfig) -> dict[str, object]:

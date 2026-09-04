@@ -275,11 +275,23 @@ def test_discover_oauth_metadata(monkeypatch, body, expected_error):
     assert calls == [
         (
             "https://idp.example.com/.well-known/openid-configuration",
-            {"User-Agent": "conda-auth-test"},
+            {"User-Agent": "conda-auth-test", "Accept": "application/json"},
             30,
         )
     ]
     assert response.raise_for_status_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("user_agent", "expected"),
+    (
+        ("conda-auth-test", {"Accept": "application/json", "User-Agent": "conda-auth-test"}),
+        (None, {"Accept": "application/json"}),
+    ),
+    ids=("with-user-agent", "without-user-agent"),
+)
+def test_headers_always_includes_accept_json(user_agent, expected):
+    assert OAuthClient.headers(user_agent) == expected
 
 
 @pytest.mark.parametrize(
@@ -482,6 +494,57 @@ def test_device_code_flow_polls_until_authorized(monkeypatch):
     )
 
 
+def test_device_code_flow_handles_200_status_pending_response(monkeypatch):
+    """Some providers (e.g. GitHub) respond with HTTP 200 for pending polls.
+
+    The response body still needs to be inspected for an "access_token" before
+    treating the poll as successful, otherwise a pending/error response with a
+    200 status code would be mistaken for a successful token response.
+    """
+    responses = [
+        FakeResponse(
+            {
+                "verification_uri": "https://github.com/login/device",
+                "user_code": "11CA-E851",
+                "device_code": "f666bd553c568c6ee268c0e8be2b59aa2595be94",
+                "interval": 1,
+                "expires_in": 899,
+            }
+        ),
+        # GitHub returns HTTP 200 even while authorization is still pending.
+        FakeResponse({"error": "authorization_pending"}, status_code=200),
+        FakeResponse(
+            {"access_token": "access", "refresh_token": "refresh"},
+            status_code=200,
+        ),
+    ]
+    sleeps = []
+
+    monkeypatch.setattr(
+        oauth2_client.requests,
+        "post",
+        lambda url, data, headers, timeout: responses.pop(0),
+    )
+    monkeypatch.setattr(oauth2_client.time, "time", lambda: 100)
+    monkeypatch.setattr(oauth2_client.time, "sleep", sleeps.append)
+    config = OAuthLoginConfig("https://idp.example.com", "client", flow="device-code")
+    metadata = {
+        "token_endpoint": "https://idp.example.com/token",
+        "device_authorization_endpoint": "https://idp.example.com/device",
+        "revocation_endpoint": "https://idp.example.com/revoke",
+    }
+
+    tokens = device_code_flow(config, metadata)
+
+    assert tokens == OAuthTokens(
+        access_token="access",
+        refresh_token="refresh",
+        token_endpoint="https://idp.example.com/token",
+        revocation_endpoint="https://idp.example.com/revoke",
+    )
+    assert sleeps == [1, 1]
+
+
 @pytest.mark.parametrize(
     ("metadata", "device_data", "expires_in", "message"),
     (
@@ -660,7 +723,7 @@ def test_refresh_record_updates_tokens(
     assert refreshed.client_secret == client_secret
     _, data, auth, headers, timeout = calls[0]
     assert data["grant_type"] == "refresh_token"
-    assert headers == {"User-Agent": "conda-auth-test"}
+    assert headers == {"User-Agent": "conda-auth-test", "Accept": "application/json"}
     assert timeout == 30
     if client_secret is None:
         assert data["client_id"] == "client"
@@ -741,7 +804,7 @@ def test_revoke_record_uses_refresh_token_and_client_auth(monkeypatch, client_se
 
     _, data, auth, headers, timeout = calls[0]
     assert data["token"] == "refresh"
-    assert headers == {"User-Agent": "conda-auth-test"}
+    assert headers == {"User-Agent": "conda-auth-test", "Accept": "application/json"}
     assert timeout == 30
     if client_secret is None:
         assert data["client_id"] == "client"
