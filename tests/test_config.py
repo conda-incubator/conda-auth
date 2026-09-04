@@ -18,7 +18,13 @@ channel_settings:
 
 def test_get_updated_channel_settings_preserves_existing_channel_settings():
     channel_settings = [
-        {"channel": "tester", "auth": "token", "ssl_verify": False},
+        {
+            "channel": "tester",
+            "auth": "token",
+            "token_header": "X-Auth",
+            "token_template": "Token {token}",
+            "ssl_verify": False,
+        },
         {"channel": "other", "auth": "token"},
     ]
 
@@ -57,14 +63,33 @@ def test_get_updated_channel_settings_updates_last_exact_channel():
     ]
 
 
-def test_get_updated_channel_settings_preserves_same_type_public_config():
+@pytest.mark.parametrize(
+    ("auth_type", "public_settings", "secret_settings"),
+    (
+        (
+            "oauth2",
+            {"oauth_client_id": "client", "oauth_flow": "device-code"},
+            {"oauth_client_secret": "must-not-survive"},
+        ),
+        (
+            "token",
+            {"token_header": "X-Auth", "token_template": "Token {token}"},
+            {"token": "must-not-survive"},
+        ),
+    ),
+    ids=("oauth2", "token"),
+)
+def test_get_updated_channel_settings_preserves_same_type_public_config(
+    auth_type,
+    public_settings,
+    secret_settings,
+):
     channel_settings = [
         {
             "channel": "https://repo.example.com",
-            "auth": "oauth2",
-            "oauth_client_id": "client",
-            "oauth_client_secret": "must-not-survive",
-            "oauth_flow": "device-code",
+            "auth": auth_type,
+            **public_settings,
+            **secret_settings,
             "ssl_verify": False,
         }
     ]
@@ -72,14 +97,13 @@ def test_get_updated_channel_settings_preserves_same_type_public_config():
     assert get_updated_channel_settings(
         channel_settings,
         "https://repo.example.com",
-        "oauth2",
+        auth_type,
     ) == [
         {
             "channel": "https://repo.example.com",
-            "auth": "oauth2",
+            "auth": auth_type,
             "auth_target": "https://repo.example.com",
-            "oauth_client_id": "client",
-            "oauth_flow": "device-code",
+            **public_settings,
             "ssl_verify": False,
         }
     ]
@@ -162,6 +186,9 @@ def test_remove_channel_settings_preserves_non_auth_settings():
                 {
                     "channel": "tester",
                     "auth": "token",
+                    "auth_allow_plaintext_http": True,
+                    "token_header": "X-Auth",
+                    "token_template": "Token {token}",
                     "ssl_verify": False,
                 },
                 {"channel": "other", "auth": "token"},
