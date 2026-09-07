@@ -209,7 +209,7 @@ def condarc(mocker):
     config.__enter__.return_value = config
     config.__exit__.return_value = None
     config.content = {}
-    mocker.patch("conda_auth.cli.ConfigurationFile.from_user_condarc", return_value=config)
+    mocker.patch("conda_auth.cli.channel.ConfigurationFile.from_user_condarc", return_value=config)
     mocker.patch(
         "conda_auth.cli.proxy.ConfigurationFile.from_user_condarc",
         return_value=config,
