@@ -5,6 +5,7 @@
 :hidden:
 
 oauth2-recipe-tutorial
+FAQ <faq>
 ```
 
 The `conda-auth` plugin improves the authentication experience for conda. Read below to learn how to start using it.
@@ -152,7 +153,7 @@ package (see [Creating an OAuth 2.0 auth recipe](oauth2-recipe-tutorial.md)),
 no additional flags are needed. Install the package and log in:
 
 ```
-conda install resource-handler-auth
+conda install --name base example-oauth2-config
 conda auth login https://repo.example.com
 ```
 
@@ -237,14 +238,16 @@ conda auth logout <channel_name> --json
 `status` output is redacted and does not print stored tokens, passwords, OAuth 2.0
 access tokens, or refresh tokens.
 
-### Storage backend unavailable?
+### Credential storage
 
 conda-auth relies on the [keyring](https://github.com/jaraco/keyring) package to store
 passwords and secrets. Keyring is the only production write backend; conda-auth does
 not add a plaintext auth file backend or implicit `.netrc` fallback.
 
+#### Storage backend unavailable?
+
 Because of this, it only supports a limited number of operating systems, mostly
-desktop operating systems like Windows, OSX and several Linux variants.
+desktop operating systems like Windows, macOS and several Linux variants.
 
 If you want to use conda-auth, but are not using a supported operating system, you can install the
 [keyring-alt](https://github.com/jaraco/keyrings.alt) package:
@@ -258,6 +261,8 @@ This method stores passwords and secrets in a plain text file on the filesystem 
 production usage. Please read the [project's README](https://github.com/jaraco/keyrings.alt) for more
 information.
 ```
+
+For more storage and platform details, see the [FAQ](faq.md).
 
 ## Reporting bugs
 
