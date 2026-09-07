@@ -120,6 +120,9 @@ class AuthenticatedChannelServer:
                     "timestamp": 0,
                 }
             (directory / "repodata.json").write_text(json.dumps(repodata))
+            (directory / "repodata_shards.msgpack.zst").write_bytes(
+                b"\x28\xb5\x2f\xfdtest shard index"
+            )
 
         (self.root / "channeldata.json").write_text(
             json.dumps(

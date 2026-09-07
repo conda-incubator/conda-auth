@@ -45,6 +45,62 @@ def test_basic_auth_conda_search_uses_stored_credentials(conda_runner, channel_s
     )
 
 
+def test_basic_auth_login_verify_probes_channel_metadata(conda_runner, channel_server):
+    server = channel_server(mode="basic", username="user", password="pass")
+
+    login = conda_runner.run(
+        "auth",
+        "login",
+        server.url,
+        "--basic",
+        "--username",
+        "user",
+        "--password",
+        "pass",
+        "--verify",
+        "--json",
+    )
+
+    assert login.returncode == 0, login.stderr or login.stdout
+    assert json.loads(login.stdout)["success"] is True
+    assert any(
+        record.path.endswith("repodata_shards.msgpack.zst")
+        and record.authorization == server.expected_basic_header
+        and record.status_code == 200
+        for record in server.records
+    )
+
+
+def test_basic_auth_login_verify_failure_rolls_back_credentials(conda_runner, channel_server):
+    server = channel_server(mode="basic", username="user", password="pass")
+
+    login = conda_runner.run(
+        "auth",
+        "login",
+        server.url,
+        "--basic",
+        "--username",
+        "user",
+        "--password",
+        "wrong",
+        "--verify",
+        "--json",
+    )
+
+    assert login.returncode != 0
+    assert any(
+        record.path.endswith("repodata.json")
+        and record.authorization is not None
+        and record.status_code == 401
+        for record in server.records
+    )
+
+    status = conda_runner.run("auth", "status", "--json")
+
+    assert status.returncode == 0, status.stderr or status.stdout
+    assert json.loads(status.stdout) == {"success": True, "credentials": []}
+
+
 def test_basic_auth_conda_search_without_credentials_fails(conda_runner, channel_server):
     server = channel_server(mode="basic", username="user", password="pass")
 

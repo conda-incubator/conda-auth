@@ -55,6 +55,11 @@ conda auth login https://example.com/my-protected-channel --oauth2 \
   --oauth-client-id my-client
 ```
 
+Add `--verify` to a login command to best-effort probe channel metadata before
+reporting success. conda-auth prefers the smaller sharded repodata index and falls
+back to `repodata.json`. Clear auth failures such as `401` or `403` roll back the
+stored credential. Missing or unreachable metadata is treated as inconclusive.
+
 **Log out** of a channel to remove credentials from your computer:
 
 ```
