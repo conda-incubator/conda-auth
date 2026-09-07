@@ -57,6 +57,8 @@ def test_keyring_storage_stores_structured_record(keyring):
         auth_type="token",
         username="token",
         token="secret-token",
+        token_header="X-Auth",
+        token_template="Token {token}",
     )
 
     backend.set_credential(record)
