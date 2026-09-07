@@ -15,6 +15,7 @@ access private conda channels:
 
 - `conda auth login` for logging into a private channel and storing your credentials
 - `conda auth logout` for logging out of a private channel and removing your credentials
+- `conda auth status` for showing redacted stored credential metadata
 
 ## Installation
 
@@ -35,14 +36,6 @@ conda auth login https://example.com/my-protected-channel --basic
 
 <h5>Token authentication:</h5>
 
-
-```
-conda auth login example --token
-```
-
-*The above example by default would authenticate for a channel at [anaconda.org](https://anaconda.org).*
-
-<h5>Token authentication using other channels:</h5>
 
 ```
 conda auth login https://example.com/my-protected-channel --token
