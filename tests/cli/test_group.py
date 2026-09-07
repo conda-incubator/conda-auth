@@ -3,7 +3,7 @@ from argparse import Namespace
 import pytest
 
 from conda_auth.cli import auth
-from conda_auth.cli.channel import get_auth_manager, prompt_secret, prompt_text
+from conda_auth.cli.channel import get_auth_manager
 from conda_auth.exceptions import CondaAuthError
 from conda_auth.handlers import (
     HTTP_BASIC_AUTH_NAME,
@@ -28,25 +28,6 @@ def test_auth_wrapper(runner):
 def test_auth_rejects_unknown_command():
     with pytest.raises(CondaAuthError, match="Unknown command: unknown"):
         auth(Namespace(command="unknown"))
-
-
-def test_prompt_text_uses_input(monkeypatch):
-    """
-    Test to make sure the text prompt delegates to the standard input function.
-    """
-    monkeypatch.setattr("builtins.input", lambda prompt: f"value for {prompt}")
-
-    assert prompt_text("Username: ") == "value for Username: "
-
-
-def test_prompt_secret_uses_getpass(mocker):
-    """
-    Test to make sure the secret prompt delegates to getpass.
-    """
-    getpass_mock = mocker.patch("conda_auth.cli.channel.getpass", return_value="secret")
-
-    assert prompt_secret("Password: ") == "secret"
-    getpass_mock.assert_called_once_with("Password: ")
 
 
 @pytest.mark.parametrize(
