@@ -1,18 +1,19 @@
-# conda auth
+# conda-auth
 
 A conda plugin for handling authenticated access to private channels.
 
-Conda auth currently supports the following types of authentication:
+conda-auth currently supports the following types of authentication:
 
 - HTTP Basic Authentication
 - bearer/header token authentication
 - OAuth 2.0/OIDC user login
+- HTTP proxy username/password authentication
 
-On top of this, conda auth supports session management via two subcommands for logging into services (`conda auth login`) and logging out of services (`conda auth logout`).
+On top of this, conda-auth supports session management via subcommands for logging into services (`conda auth login`), logging out of services (`conda auth logout`), and showing redacted credential status (`conda auth status`).
 
 ## Installation
 
-Conda auth is available on conda-forge. As with all conda plugins, this must be installed into your base environment:
+conda-auth is available on conda-forge. As with all conda plugins, this must be installed into your base environment:
 ```
 conda install --name base --channel conda-forge conda-auth
 ```
@@ -50,7 +51,7 @@ for the package format.
 **Log in** with OAuth 2.0/OIDC options supplied manually:
 
 ```
-conda auth login https://example.com/my-protected-channel --oauth2 \
+conda auth login https://repo.example.com/private --oauth2 \
   --oauth-issuer-url https://idp.example.com \
   --oauth-client-id my-client
 ```
@@ -59,6 +60,12 @@ Add `--verify` to a login command to best-effort probe channel metadata before
 reporting success. conda-auth prefers the smaller sharded repodata index and falls
 back to `repodata.json`. Clear auth failures such as `401` or `403` roll back the
 stored credential. Missing or unreachable metadata is treated as inconclusive.
+
+**Log in** to an HTTP proxy without storing the password in `.condarc`:
+
+```
+conda auth proxy login http --proxy-url http://proxy.example.com:8080 --username "$PROXY_USER"
+```
 
 **Log out** of a channel to remove credentials from your computer:
 
@@ -70,6 +77,19 @@ The login commands prompt for secrets by default. Passing passwords or tokens di
 on the command line is supported for non-interactive automation, but may expose them in
 shell history or process listings.
 
+conda-auth sends credentials only to HTTP(S) channel services. HTTPS is required for
+remote channels by default. For an explicitly trusted plaintext HTTP channel, opt in
+per channel:
+
+```
+conda auth login http://example.com/my-protected-channel --basic --allow-plaintext-http
+```
+
+Plaintext HTTP sends credentials without transport encryption. Prefer HTTPS whenever
+possible.
+
+Conda's `s3://` support currently uses boto3's normal AWS credential chain. conda-auth
+does not set process-wide AWS environment variables for S3 credentials.
 
 ## Contributing to This Project
 

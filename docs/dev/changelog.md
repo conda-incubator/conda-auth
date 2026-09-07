@@ -15,7 +15,7 @@ Remember to update the hyperlinks at the bottom.
 
 ## 0.0.1 (2023-10-04)
 
-This is the initial release for conda auth. It includes the following pieces of work:
+This is the initial release for conda-auth. It includes the following pieces of work:
 
 ## What's Changed
 * Update recipe metadata and license by @jezdez in [#1](https://github.com/conda-incubator/conda-auth/pull/1)
