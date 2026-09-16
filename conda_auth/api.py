@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Literal, TypedDict
-
-from conda.cli.condarc import ConfigurationFile
-from conda.models.channel import Channel
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 from .exceptions import CondaAuthError
+
+if TYPE_CHECKING:
+    from conda.cli.condarc import ConfigurationFile
+    from conda.models.channel import Channel
 
 
 class ChannelSettingsEdit(TypedDict):
@@ -48,6 +49,7 @@ def plan_channel_settings(
     exact channel_settings entry, preserving all other entries and fields.
     The caller owns validation, concurrency checks, and the eventual commit.
     """
+    # Login imports the result type from this module. Defer the reverse import.
     from .cli.channel import get_auth_manager
     from .cli.config import (
         AUTH_CHANNEL_SETTING_KEYS,
