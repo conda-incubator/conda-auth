@@ -231,7 +231,6 @@ def _login(
     if interactive:
         if not sys.stdin.isatty():
             raise CondaAuthError("Interactive login requires a terminal")
-        kwargs = dict(kwargs)
         if auth_type == HTTP_BASIC_AUTH_NAME:
             if kwargs.get("username") is None:
                 kwargs["username"] = input("Username: ")
