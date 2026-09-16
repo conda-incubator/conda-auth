@@ -13,6 +13,7 @@ from conda.common.serialize import yaml
 from conda.exceptions import CondaError
 from conda.models.channel import Channel
 
+from ..api import LoginPreparation, plan_channel_settings
 from ..constants import AUTH_ALLOW_PLAINTEXT_HTTP_PARAM
 from ..exceptions import CondaAuthError
 from ..handlers import (
@@ -175,6 +176,18 @@ def get_auth_manager(
 
 def login(channel: Channel, **kwargs):
     """Log in to a channel by configuring and storing its credentials."""
+    _login(channel, **kwargs)
+
+
+def _login(
+    channel: Channel,
+    *,
+    configuration: ConfigurationFile | None = None,
+    write_configuration: bool = True,
+    interactive: bool = False,
+    **kwargs,
+) -> LoginPreparation:
+    """Share credential handling between immediate and staged configuration."""
     auth_type, auth_manager = get_auth_manager(**kwargs)
     configured_settings = find_channel_settings(context.channel_settings, channel)
     configured_auth_value = configured_settings.get("auth") if configured_settings else None
@@ -182,7 +195,9 @@ def login(channel: Channel, **kwargs):
         configured_auth_value.strip().lower() if isinstance(configured_auth_value, str) else None
     )
 
-    user_config = ConfigurationFile.from_user_condarc()
+    user_config = (
+        configuration if configuration is not None else ConfigurationFile.from_user_condarc()
+    )
     try:
         original_user_content = deepcopy(user_config.content)
         user_channel_settings = user_config.content.get("channel_settings", []) or []
@@ -194,6 +209,9 @@ def login(channel: Channel, **kwargs):
     user_settings = find_channel_settings(user_channel_settings, channel)
     user_auth_value = user_settings.get("auth") if user_settings else None
     user_auth = user_auth_value.strip().lower() if isinstance(user_auth_value, str) else None
+    if configuration is not None and configured_auth is None and user_auth == auth_type:
+        configured_settings = user_settings
+        configured_auth = user_auth
     external_auth = configured_auth is not None and user_auth != configured_auth
     if external_auth and configured_auth != auth_type:
         raise CondaAuthError(
@@ -210,6 +228,22 @@ def login(channel: Channel, **kwargs):
         configured_target if isinstance(configured_target, str) else channel_setting
     )
     validate_secure_channel(channel, allow_plaintext_http=allow_plaintext_http)
+    if interactive:
+        if not sys.stdin.isatty():
+            raise CondaAuthError("Interactive login requires a terminal")
+        kwargs = dict(kwargs)
+        if auth_type == HTTP_BASIC_AUTH_NAME:
+            if kwargs.get("username") is None:
+                kwargs["username"] = input("Username: ")
+            if kwargs.get("password") is None:
+                kwargs["password"] = getpass("Password: ")
+        elif (
+            auth_type == TOKEN_NAME
+            and kwargs.get(TOKEN_PARAM_NAME) is None
+            and kwargs.get(TOKEN_FILE_PARAM_NAME) is None
+            and not (auth_settings and auth_settings.get(TOKEN_FILE_PARAM_NAME))
+        ):
+            kwargs[TOKEN_PARAM_NAME] = getpass("Token: ")
 
     record = None
     username: str | None = None
@@ -259,19 +293,30 @@ def login(channel: Channel, **kwargs):
         )
     )
     wrote_user_condarc = False
+    configuration_edit = None
     if not external_auth or has_runtime_override:
         try:
-            with user_config as config:
-                update_channel_settings(
-                    config,
+            if not write_configuration:
+                configuration_edit = plan_channel_settings(
+                    user_config,
                     channel_setting,
                     auth_type,
-                    None,
                     auth_target=credential_target,
                     allow_plaintext_http=allow_plaintext_http,
                     settings=persisted_settings,
                 )
-                wrote_user_condarc = True
+            else:
+                with user_config as config:
+                    update_channel_settings(
+                        config,
+                        channel_setting,
+                        auth_type,
+                        None,
+                        auth_target=credential_target,
+                        allow_plaintext_http=allow_plaintext_http,
+                        settings=persisted_settings,
+                    )
+                    wrote_user_condarc = True
         except (CondaError, OSError, yaml.YAMLError) as exc:
             auth_manager.cache_clear(channel.canonical_name)
             raise CondaAuthError(str(exc))
@@ -319,6 +364,17 @@ def login(channel: Channel, **kwargs):
                 f"{credential_error}. Failed to roll back channel settings: {rollback_error}"
             ) from credential_error
         raise
+
+    return LoginPreparation(
+        configuration_edit=configuration_edit,
+        credentials_state=(
+            "stored"
+            if stored_record is not None
+            else "external"
+            if verification_record is not None
+            else "unchanged"
+        ),
+    )
 
 
 def logout(channel: Channel):

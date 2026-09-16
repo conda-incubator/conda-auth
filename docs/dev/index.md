@@ -6,6 +6,7 @@
 
 Code of Conduct <code-of-conduct>
 Release Notes <changelog>
+Staged authentication API <api>
 ```
 
 Thank you for your interest in contributing to conda-auth! This is a short guide that will walk you
