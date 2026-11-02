@@ -2,7 +2,8 @@
 A place to register plugin hooks
 """
 from conda.cli.conda_argparse import BUILTIN_COMMANDS
-from conda.plugins import CondaAuthHandler, CondaPreCommand, CondaSubcommand, hookimpl
+from conda.plugins import hookimpl
+from conda.plugins.types import CondaAuthHandler, CondaPreCommand, CondaSubcommand
 
 from .handlers import (
     basic_auth_manager,
