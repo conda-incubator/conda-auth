@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - 0.2.x
   pull_request:
     branches:
       - main
+      - 0.2.x
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
@@ -55,7 +57,7 @@ jobs:
       - uses: prefix-dev/setup-pixi@v0.3.0
         with:
           pixi-version: v0.6.0
-          cache: true
+          cache: false
 
       - name: Install dependencies
         run: |
