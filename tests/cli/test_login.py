@@ -57,7 +57,7 @@ def test_login_with_invalid_auth_type(runner, keyring, condarc):
 
     assert result.exit_code == 2
     assert exc_type == SystemExit
-    assert "Error: Missing option 'basic' / 'token'." in result.stdout
+    assert "Error: Missing option 'basic' / 'token'." in result.output
 
 
 def test_login_succeeds_error_returned_when_updating_condarc(runner, keyring, condarc):
